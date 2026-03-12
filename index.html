@@ -1,7 +1,159 @@
 <!DOCTYPE html>
-<html>
-  <head><title>micahman.vip</title></head>
-  <body>
-    <h1>Coming soon... 🚀</h1>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>micahman.vip</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: #0f0c29;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      color: white;
+      overflow-x: hidden;
+    }
+
+    /* Stars background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-image:
+        radial-gradient(2px 2px at 20% 30%, white, transparent),
+        radial-gradient(2px 2px at 60% 70%, white, transparent),
+        radial-gradient(1px 1px at 80% 20%, white, transparent),
+        radial-gradient(1px 1px at 40% 80%, white, transparent),
+        radial-gradient(2px 2px at 90% 50%, white, transparent),
+        radial-gradient(1px 1px at 10% 60%, white, transparent),
+        radial-gradient(1px 1px at 70% 40%, white, transparent),
+        radial-gradient(2px 2px at 50% 10%, white, transparent),
+        radial-gradient(1px 1px at 30% 90%, white, transparent),
+        radial-gradient(2px 2px at 85% 85%, white, transparent);
+      opacity: 0.4;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 24px 80px;
+      text-align: center;
+    }
+
+    .logo {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(3rem, 10vw, 6rem);
+      background: linear-gradient(90deg, #f9ca24, #f0932b, #eb4d4b, #6c5ce7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+      margin-bottom: 12px;
+      animation: pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+    }
+
+    .tagline {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #a8c8ff;
+      margin-bottom: 60px;
+      letter-spacing: 0.05em;
+    }
+
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      justify-content: center;
+    }
+
+    .game-card {
+      background: rgba(255, 255, 255, 0.07);
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 24px;
+      padding: 36px 28px;
+      text-decoration: none;
+      color: white;
+      transition: transform 0.2s, background 0.2s, border-color 0.2s;
+      cursor: pointer;
+      display: block;
+    }
+
+    .game-card:hover {
+      transform: translateY(-8px) scale(1.02);
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .game-card .icon {
+      font-size: 4rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .game-card .game-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.8rem;
+      margin-bottom: 10px;
+    }
+
+    .game-card .game-desc {
+      font-size: 1rem;
+      color: #c0d8ff;
+      line-height: 1.5;
+    }
+
+    .game-card.click { border-color: rgba(249, 202, 36, 0.4); }
+    .game-card.click:hover { border-color: #f9ca24; box-shadow: 0 0 30px rgba(249, 202, 36, 0.3); }
+    .game-card.click .game-title { color: #f9ca24; }
+
+    .game-card.math { border-color: rgba(108, 92, 231, 0.4); }
+    .game-card.math:hover { border-color: #6c5ce7; box-shadow: 0 0 30px rgba(108, 92, 231, 0.4); }
+    .game-card.math .game-title { color: #a29bfe; }
+
+    footer {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 24px;
+      color: rgba(255,255,255,0.3);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">micahman.vip</div>
+    <p class="tagline">games. fun. chaos. 🎮</p>
+
+    <div class="games-grid">
+      <a href="/games/click-test/" class="game-card click">
+        <span class="icon">👆</span>
+        <div class="game-title">Click Speed Test</div>
+        <p class="game-desc">How fast can you click? Smash the button as many times as you can in 10 seconds!</p>
+      </a>
+
+      <a href="/games/math-challenge/" class="game-card math">
+        <span class="icon">🧮</span>
+        <div class="game-title">Math Challenge</div>
+        <p class="game-desc">Race against the clock! Solve math problems as fast as you can before time runs out.</p>
+      </a>
+    </div>
+  </div>
+
+  <footer>made with ❤️ by micahman</footer>
+</body>
 </html>

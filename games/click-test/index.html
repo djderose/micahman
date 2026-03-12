@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Click Speed Test — micahman.vip</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      user-select: none;
+    }
+
+    .back {
+      position: fixed;
+      top: 20px; left: 20px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      background: rgba(255,255,255,0.08);
+      padding: 8px 16px;
+      border-radius: 50px;
+      transition: all 0.2s;
+    }
+    .back:hover { color: white; background: rgba(255,255,255,0.15); }
+
+    .game-wrapper {
+      text-align: center;
+      padding: 24px;
+      max-width: 560px;
+      width: 100%;
+    }
+
+    h1 {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(2rem, 7vw, 3.5rem);
+      color: #f9ca24;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #a8c8ff;
+      font-size: 1.1rem;
+      margin-bottom: 36px;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-bottom: 36px;
+    }
+
+    .stat-box {
+      background: rgba(255,255,255,0.07);
+      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 16px 28px;
+      min-width: 120px;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2.5rem;
+      color: #f9ca24;
+      line-height: 1;
+    }
+
+    #timer-box .stat-value { color: #f9ca24; }
+    #timer-box.urgent .stat-value { color: #eb4d4b; animation: shake 0.3s infinite; }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-2px); }
+      75% { transform: translateX(2px); }
+    }
+
+    .click-btn {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(145deg, #f9ca24, #f0932b);
+      color: #1a1a2e;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.5rem;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(249, 202, 36, 0.4), 0 0 0 8px rgba(249, 202, 36, 0.1);
+      transition: transform 0.08s, box-shadow 0.08s;
+      outline: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .click-btn:active {
+      transform: scale(0.93);
+      box-shadow: 0 4px 16px rgba(249, 202, 36, 0.3), 0 0 0 4px rgba(249, 202, 36, 0.1);
+    }
+
+    .click-btn.idle { background: linear-gradient(145deg, #f9ca24, #f0932b); }
+    .click-btn.playing { background: linear-gradient(145deg, #55efc4, #00b894); box-shadow: 0 8px 32px rgba(0, 184, 148, 0.4), 0 0 0 8px rgba(0, 184, 148, 0.1); }
+    .click-btn.done { background: linear-gradient(145deg, #a29bfe, #6c5ce7); box-shadow: 0 8px 32px rgba(108, 92, 231, 0.4), 0 0 0 8px rgba(108, 92, 231, 0.1); cursor: default; }
+
+    .click-btn .ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transform: scale(0);
+      animation: ripple 0.4s linear;
+      pointer-events: none;
+    }
+    @keyframes ripple {
+      to { transform: scale(4); opacity: 0; }
+    }
+
+    .result-msg {
+      margin-top: 28px;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.6rem;
+      color: #a29bfe;
+      min-height: 2rem;
+      animation: fadeIn 0.4s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .high-score-row {
+      margin-top: 12px;
+      font-size: 0.95rem;
+      color: rgba(255,255,255,0.45);
+    }
+    .high-score-row span {
+      color: #f9ca24;
+      font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back">← home</a>
+
+  <div class="game-wrapper">
+    <h1>👆 Click Speed Test</h1>
+    <p class="subtitle">Click as fast as you can for 10 seconds!</p>
+
+    <div class="stats">
+      <div class="stat-box" id="clicks-box">
+        <div class="stat-label">Clicks</div>
+        <div class="stat-value" id="click-count">0</div>
+      </div>
+      <div class="stat-box" id="timer-box">
+        <div class="stat-label">Time Left</div>
+        <div class="stat-value" id="timer">10</div>
+      </div>
+    </div>
+
+    <button class="click-btn idle" id="btn" onclick="handleClick(event)">
+      CLICK ME!
+    </button>
+
+    <div class="result-msg" id="result-msg"></div>
+    <div class="high-score-row" id="high-score-row"></div>
+  </div>
+
+  <script>
+    const DURATION = 10;
+    let clicks = 0;
+    let timeLeft = DURATION;
+    let state = 'idle'; // idle | playing | done
+    let interval = null;
+
+    const btn = document.getElementById('btn');
+    const clickCountEl = document.getElementById('click-count');
+    const timerEl = document.getElementById('timer');
+    const resultMsg = document.getElementById('result-msg');
+    const timerBox = document.getElementById('timer-box');
+    const highScoreRow = document.getElementById('high-score-row');
+
+    function getHighScore() {
+      return parseInt(localStorage.getItem('clicktest-highscore') || '0');
+    }
+
+    function setHighScore(score) {
+      localStorage.setItem('clicktest-highscore', score);
+    }
+
+    function updateHighScoreDisplay() {
+      const hs = getHighScore();
+      if (hs > 0) {
+        highScoreRow.innerHTML = `Best: <span>${hs} clicks</span>`;
+      }
+    }
+
+    function getResultMessage(count) {
+      if (count >= 120) return "🔥 LEGENDARY! Are you even human?!";
+      if (count >= 100) return "⚡ INSANE! You're a clicking machine!";
+      if (count >= 80)  return "🚀 WOW! Super fast fingers!";
+      if (count >= 60)  return "😎 Nice! You've got quick clicks!";
+      if (count >= 40)  return "👍 Not bad! Keep practicing!";
+      if (count >= 20)  return "🙂 Good start! Can you go faster?";
+      return "😅 Keep trying — you'll get there!";
+    }
+
+    function addRipple(e) {
+      const ripple = document.createElement('span');
+      ripple.classList.add('ripple');
+      const rect = btn.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height);
+      ripple.style.width = ripple.style.height = size + 'px';
+      ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+      ripple.style.top  = (e.clientY - rect.top  - size / 2) + 'px';
+      btn.appendChild(ripple);
+      ripple.addEventListener('animationend', () => ripple.remove());
+    }
+
+    function handleClick(e) {
+      if (state === 'done') return;
+
+      addRipple(e);
+
+      if (state === 'idle') {
+        startGame();
+        return;
+      }
+
+      // playing
+      clicks++;
+      clickCountEl.textContent = clicks;
+    }
+
+    function startGame() {
+      state = 'playing';
+      clicks = 0;
+      timeLeft = DURATION;
+      clickCountEl.textContent = '0';
+      timerEl.textContent = timeLeft;
+      resultMsg.textContent = '';
+      timerBox.classList.remove('urgent');
+      btn.className = 'click-btn playing';
+      btn.textContent = 'CLICK!';
+
+      interval = setInterval(() => {
+        timeLeft--;
+        timerEl.textContent = timeLeft;
+
+        if (timeLeft <= 3) {
+          timerBox.classList.add('urgent');
+        }
+
+        if (timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function endGame() {
+      clearInterval(interval);
+      state = 'done';
+      btn.className = 'click-btn done';
+      btn.textContent = '▶ Play Again';
+      timerBox.classList.remove('urgent');
+
+      const msg = getResultMessage(clicks);
+      resultMsg.textContent = msg;
+
+      const hs = getHighScore();
+      if (clicks > hs) {
+        setHighScore(clicks);
+        highScoreRow.innerHTML = `🏆 New Best: <span>${clicks} clicks!</span>`;
+      } else {
+        highScoreRow.innerHTML = `Best: <span>${hs} clicks</span>`;
+      }
+
+      // Allow clicking "Play Again"
+      btn.onclick = (e) => {
+        addRipple(e);
+        resetGame();
+      };
+    }
+
+    function resetGame() {
+      state = 'idle';
+      clicks = 0;
+      timeLeft = DURATION;
+      clickCountEl.textContent = '0';
+      timerEl.textContent = DURATION;
+      resultMsg.textContent = '';
+      timerBox.classList.remove('urgent');
+      btn.className = 'click-btn idle';
+      btn.textContent = 'CLICK ME!';
+      btn.onclick = handleClick;
+      updateHighScoreDisplay();
+    }
+
+    updateHighScoreDisplay();
+  </script>
+</body>
+</html>

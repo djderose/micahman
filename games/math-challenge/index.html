@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Math Challenge — micahman.vip</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .back {
+      position: fixed;
+      top: 20px; left: 20px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      background: rgba(255,255,255,0.08);
+      padding: 8px 16px;
+      border-radius: 50px;
+      transition: all 0.2s;
+    }
+    .back:hover { color: white; background: rgba(255,255,255,0.15); }
+
+    .game-wrapper {
+      text-align: center;
+      padding: 24px;
+      max-width: 560px;
+      width: 100%;
+    }
+
+    h1 {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(2rem, 7vw, 3.5rem);
+      color: #a29bfe;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #a8c8ff;
+      font-size: 1.1rem;
+      margin-bottom: 28px;
+    }
+
+    /* Difficulty selector */
+    .difficulty {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .diff-btn {
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 800;
+      padding: 8px 20px;
+      border-radius: 50px;
+      border: 2px solid rgba(255,255,255,0.2);
+      background: transparent;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .diff-btn:hover { border-color: #a29bfe; color: white; }
+    .diff-btn.active { background: #6c5ce7; border-color: #6c5ce7; color: white; }
+
+    /* Stats bar */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .stat-box {
+      background: rgba(255,255,255,0.07);
+      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 12px 24px;
+      min-width: 100px;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2rem;
+      color: #a29bfe;
+      line-height: 1;
+    }
+
+    #timer-val { color: #a29bfe; }
+    .timer-urgent #timer-val { color: #eb4d4b; }
+
+    /* Problem display */
+    .problem-area {
+      background: rgba(255,255,255,0.07);
+      border: 2px solid rgba(108, 92, 231, 0.3);
+      border-radius: 24px;
+      padding: 32px 24px;
+      margin-bottom: 24px;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .problem-text {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(2.5rem, 10vw, 4rem);
+      color: white;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .feedback {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.4rem;
+      min-height: 1.8rem;
+      transition: color 0.1s;
+    }
+    .feedback.correct { color: #55efc4; }
+    .feedback.wrong   { color: #eb4d4b; }
+
+    /* Answer input */
+    .answer-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+
+    #answer-input {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2rem;
+      width: 160px;
+      text-align: center;
+      padding: 12px;
+      border-radius: 16px;
+      border: 3px solid rgba(108, 92, 231, 0.5);
+      background: rgba(255,255,255,0.07);
+      color: white;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #answer-input:focus { border-color: #a29bfe; }
+    #answer-input.correct { border-color: #55efc4; }
+    #answer-input.wrong   { border-color: #eb4d4b; animation: shake 0.3s; }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    .submit-btn {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.4rem;
+      padding: 12px 28px;
+      border-radius: 16px;
+      border: none;
+      background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+      color: white;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(108, 92, 231, 0.4);
+    }
+    .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108, 92, 231, 0.5); }
+    .submit-btn:active { transform: scale(0.96); }
+
+    /* Start / Game Over screen */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 12, 41, 0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .overlay h2 {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      margin-bottom: 16px;
+      color: #a29bfe;
+    }
+
+    .overlay .big-score {
+      font-family: 'Fredoka One', cursive;
+      font-size: 5rem;
+      color: #f9ca24;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .overlay .score-label {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 8px;
+    }
+
+    .overlay .result-line {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.5rem;
+      color: #55efc4;
+      margin-bottom: 28px;
+    }
+
+    .overlay .hs-line {
+      font-size: 1rem;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 28px;
+    }
+    .overlay .hs-line span { color: #f9ca24; font-weight: 800; }
+
+    .start-btn {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.6rem;
+      padding: 16px 48px;
+      border-radius: 50px;
+      border: none;
+      background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+      color: white;
+      cursor: pointer;
+      box-shadow: 0 6px 24px rgba(108, 92, 231, 0.5);
+      transition: transform 0.15s;
+    }
+    .start-btn:hover { transform: scale(1.05); }
+    .start-btn:active { transform: scale(0.97); }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back">← home</a>
+
+  <!-- Start / Game Over overlay -->
+  <div class="overlay" id="overlay">
+    <h2 id="overlay-title">🧮 Math Challenge</h2>
+    <div class="big-score hidden" id="final-score"></div>
+    <div class="score-label hidden" id="score-label"></div>
+    <div class="result-line hidden" id="result-line"></div>
+    <div class="hs-line hidden" id="hs-line"></div>
+    <button class="start-btn" id="start-btn" onclick="startGame()">Let's Go!</button>
+  </div>
+
+  <div class="game-wrapper">
+    <h1>🧮 Math Challenge</h1>
+    <p class="subtitle">Solve as many as you can in 60 seconds!</p>
+
+    <div class="difficulty">
+      <button class="diff-btn active" onclick="setDifficulty('easy', this)">Easy</button>
+      <button class="diff-btn" onclick="setDifficulty('medium', this)">Medium</button>
+      <button class="diff-btn" onclick="setDifficulty('hard', this)">Hard</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-label">Score</div>
+        <div class="stat-value" id="score-val">0</div>
+      </div>
+      <div class="stat-box" id="timer-stat">
+        <div class="stat-label">Time</div>
+        <div class="stat-value" id="timer-val">60</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Streak</div>
+        <div class="stat-value" id="streak-val">0</div>
+      </div>
+    </div>
+
+    <div class="problem-area">
+      <div class="problem-text" id="problem-text">? + ? = ?</div>
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+    <div class="answer-row">
+      <input type="number" id="answer-input" placeholder="?" autocomplete="off" inputmode="numeric">
+      <button class="submit-btn" onclick="submitAnswer()">GO</button>
+    </div>
+  </div>
+
+  <script>
+    const GAME_DURATION = 60;
+
+    let score = 0;
+    let streak = 0;
+    let timeLeft = GAME_DURATION;
+    let interval = null;
+    let currentAnswer = 0;
+    let difficulty = 'easy';
+    let isPlaying = false;
+
+    const scoreEl    = document.getElementById('score-val');
+    const timerEl    = document.getElementById('timer-val');
+    const streakEl   = document.getElementById('streak-val');
+    const problemEl  = document.getElementById('problem-text');
+    const feedbackEl = document.getElementById('feedback');
+    const inputEl    = document.getElementById('answer-input');
+    const timerStat  = document.getElementById('timer-stat');
+    const overlay    = document.getElementById('overlay');
+
+    // Submit on Enter
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && isPlaying) submitAnswer();
+    });
+
+    function setDifficulty(level, btn) {
+      if (isPlaying) return;
+      difficulty = level;
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function rand(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function generateProblem() {
+      let a, b, op, answer, display;
+
+      if (difficulty === 'easy') {
+        op = ['+', '-'][rand(0, 1)];
+        a = rand(1, 20);
+        b = rand(1, 20);
+        if (op === '-' && b > a) [a, b] = [b, a];
+      } else if (difficulty === 'medium') {
+        op = ['+', '-', '×'][rand(0, 2)];
+        a = op === '×' ? rand(2, 12) : rand(10, 50);
+        b = op === '×' ? rand(2, 12) : rand(1, 30);
+        if (op === '-' && b > a) [a, b] = [b, a];
+      } else {
+        op = ['+', '-', '×'][rand(0, 2)];
+        a = op === '×' ? rand(3, 15) : rand(20, 100);
+        b = op === '×' ? rand(3, 15) : rand(10, 50);
+        if (op === '-' && b > a) [a, b] = [b, a];
+      }
+
+      if (op === '+') answer = a + b;
+      if (op === '-') answer = a - b;
+      if (op === '×') answer = a * b;
+
+      currentAnswer = answer;
+      problemEl.textContent = `${a} ${op} ${b} = ?`;
+    }
+
+    function getHighScore() {
+      return parseInt(localStorage.getItem(`math-hs-${difficulty}`) || '0');
+    }
+
+    function setHighScore(s) {
+      const hs = getHighScore();
+      if (s > hs) localStorage.setItem(`math-hs-${difficulty}`, s);
+      return Math.max(s, hs);
+    }
+
+    function getResultMessage(s) {
+      if (s >= 30) return "🔥 GENIUS! Absolutely incredible!";
+      if (s >= 20) return "⚡ Amazing! You're a math wizard!";
+      if (s >= 12) return "🚀 Great job! Super smart!";
+      if (s >= 6)  return "👍 Nice work! Keep it up!";
+      return "🙂 Good try! Practice makes perfect!";
+    }
+
+    function startGame() {
+      score = 0; streak = 0; timeLeft = GAME_DURATION;
+      scoreEl.textContent = '0';
+      timerEl.textContent = GAME_DURATION;
+      streakEl.textContent = '0';
+      feedbackEl.textContent = '';
+      feedbackEl.className = 'feedback';
+      timerStat.className = 'stat-box';
+      inputEl.value = '';
+      inputEl.className = '';
+      isPlaying = true;
+      overlay.classList.add('hidden');
+
+      generateProblem();
+      inputEl.focus();
+
+      interval = setInterval(() => {
+        timeLeft--;
+        timerEl.textContent = timeLeft;
+        if (timeLeft <= 10) timerStat.classList.add('timer-urgent');
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+    }
+
+    function submitAnswer() {
+      if (!isPlaying) return;
+      const val = parseInt(inputEl.value);
+      if (isNaN(val)) return;
+
+      if (val === currentAnswer) {
+        // Correct
+        score++;
+        streak++;
+        scoreEl.textContent = score;
+        streakEl.textContent = streak;
+        feedbackEl.textContent = streak >= 5 ? `✅ +1  🔥 ${streak} streak!` : '✅ Correct!';
+        feedbackEl.className = 'feedback correct';
+        inputEl.className = 'correct';
+        setTimeout(() => { inputEl.className = ''; }, 300);
+        inputEl.value = '';
+        generateProblem();
+      } else {
+        // Wrong
+        streak = 0;
+        streakEl.textContent = '0';
+        feedbackEl.textContent = `❌ Nope! It was ${currentAnswer}`;
+        feedbackEl.className = 'feedback wrong';
+        inputEl.className = 'wrong';
+        setTimeout(() => { inputEl.className = ''; }, 400);
+        inputEl.value = '';
+        generateProblem();
+      }
+      inputEl.focus();
+    }
+
+    function endGame() {
+      clearInterval(interval);
+      isPlaying = false;
+      timerStat.classList.remove('timer-urgent');
+
+      const hs = setHighScore(score);
+      const msg = getResultMessage(score);
+
+      document.getElementById('overlay-title').textContent = '⏱ Time\'s Up!';
+      document.getElementById('final-score').textContent = score;
+      document.getElementById('final-score').classList.remove('hidden');
+      document.getElementById('score-label').textContent = `${difficulty} mode`;
+      document.getElementById('score-label').classList.remove('hidden');
+      document.getElementById('result-line').textContent = msg;
+      document.getElementById('result-line').classList.remove('hidden');
+      document.getElementById('hs-line').innerHTML = `Best on ${difficulty}: <span>${hs}</span>`;
+      document.getElementById('hs-line').classList.remove('hidden');
+      document.getElementById('start-btn').textContent = 'Play Again';
+
+      overlay.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
