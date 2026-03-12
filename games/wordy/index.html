@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wordy — micahman.vip</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: white;
+      padding-bottom: 40px;
+    }
+
+    .back {
+      position: fixed;
+      top: 16px; left: 16px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      background: rgba(255,255,255,0.08);
+      padding: 8px 16px;
+      border-radius: 50px;
+      transition: all 0.2s;
+      z-index: 100;
+    }
+    .back:hover { color: white; background: rgba(255,255,255,0.15); }
+
+    header {
+      width: 100%;
+      max-width: 500px;
+      text-align: center;
+      padding: 56px 16px 12px;
+    }
+
+    h1 {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(2.2rem, 7vw, 3.2rem);
+      color: #55efc4;
+    }
+
+    .subtitle {
+      color: #a8c8ff;
+      font-size: 1rem;
+      margin-top: 4px;
+    }
+
+    /* Hint area */
+    .hint-area {
+      width: 100%;
+      max-width: 500px;
+      padding: 0 16px;
+      margin: 10px 0 6px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .hint-btn {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 800;
+      font-size: 0.9rem;
+      padding: 8px 20px;
+      border-radius: 50px;
+      border: 2px solid rgba(85, 239, 196, 0.4);
+      background: transparent;
+      color: #55efc4;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .hint-btn:hover { background: rgba(85, 239, 196, 0.1); border-color: #55efc4; }
+    .hint-btn:disabled { opacity: 0.35; cursor: default; }
+
+    .hint-text {
+      font-size: 0.95rem;
+      color: #ffeaa7;
+      font-style: italic;
+      text-align: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Board */
+    .board {
+      display: grid;
+      grid-template-rows: repeat(6, 1fr);
+      gap: 6px;
+      padding: 12px 16px;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+    }
+
+    .tile {
+      width: 100%;
+      aspect-ratio: 1;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(1.4rem, 5vw, 1.8rem);
+      color: white;
+      text-transform: uppercase;
+      transition: border-color 0.1s;
+      position: relative;
+      transform-style: preserve-3d;
+    }
+
+    .tile.filled {
+      border-color: rgba(255,255,255,0.5);
+      animation: pop 0.1s ease;
+    }
+
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+
+    .tile.flip {
+      animation: flip 0.5s ease forwards;
+    }
+
+    @keyframes flip {
+      0%   { transform: rotateX(0); }
+      50%  { transform: rotateX(-90deg); }
+      100% { transform: rotateX(0); }
+    }
+
+    .tile.correct  { background: #00b894; border-color: #00b894; }
+    .tile.present  { background: #fdcb6e; border-color: #fdcb6e; color: #1a1a2e; }
+    .tile.absent   { background: #353b48; border-color: #353b48; }
+
+    /* Shake animation for invalid word */
+    .row.shake {
+      animation: shake 0.4s ease;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    /* Toast message */
+    .toast {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.95);
+      color: #1a1a2e;
+      font-weight: 800;
+      font-size: 1rem;
+      padding: 10px 24px;
+      border-radius: 50px;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+
+    /* Keyboard */
+    .keyboard {
+      width: 100%;
+      max-width: 500px;
+      padding: 8px 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .key-row {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .key {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 800;
+      font-size: clamp(0.75rem, 2.5vw, 0.9rem);
+      height: 52px;
+      min-width: 34px;
+      padding: 0 6px;
+      flex: 1;
+      max-width: 42px;
+      border-radius: 8px;
+      border: none;
+      background: rgba(255,255,255,0.15);
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .key.wide { max-width: 60px; font-size: 0.75rem; }
+    .key:active { transform: scale(0.94); }
+    .key.correct { background: #00b894; }
+    .key.present { background: #fdcb6e; color: #1a1a2e; }
+    .key.absent  { background: #2d3436; }
+
+    /* New game button */
+    .new-game-btn {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.3rem;
+      padding: 12px 36px;
+      border-radius: 50px;
+      border: none;
+      background: linear-gradient(135deg, #55efc4, #00b894);
+      color: #1a1a2e;
+      cursor: pointer;
+      margin-top: 16px;
+      box-shadow: 0 4px 20px rgba(0, 184, 148, 0.4);
+      transition: transform 0.15s;
+      display: none;
+    }
+    .new-game-btn:hover { transform: scale(1.05); }
+    .new-game-btn.visible { display: inline-block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back">← home</a>
+  <div class="toast" id="toast"></div>
+
+  <header>
+    <h1>🟩 Wordy</h1>
+    <p class="subtitle">Guess the 5-letter word in 6 tries!</p>
+  </header>
+
+  <div class="hint-area">
+    <button class="hint-btn" id="hint-btn" onclick="showHint()">💡 Hint</button>
+    <div class="hint-text" id="hint-text"></div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <button class="new-game-btn" id="new-game-btn" onclick="newGame()">▶ New Word</button>
+
+  <div class="keyboard" id="keyboard"></div>
+
+  <script>
+    const WORDS = [
+      { word: "APPLE", clue: "It keeps the doctor away and comes in red, green, or yellow." },
+      { word: "BEACH", clue: "You build sandcastles here and splash in the waves." },
+      { word: "BERRY", clue: "A small, round fruit that can be red, blue, or black." },
+      { word: "BRAVE", clue: "You are this when you do something scary but do it anyway." },
+      { word: "BREAD", clue: "You use this to make sandwiches — toast it for breakfast!" },
+      { word: "BRICK", clue: "Houses are often built with these hard, red rectangular blocks." },
+      { word: "BROOM", clue: "Witches fly on these, and you use one to sweep the floor." },
+      { word: "BROWN", clue: "The color of chocolate, mud, and tree bark." },
+      { word: "BUNNY", clue: "A fluffy animal with long ears and a little cotton tail." },
+      { word: "CANDY", clue: "A sweet treat you might get on Halloween." },
+      { word: "CHAIN", clue: "A line of metal rings linked together." },
+      { word: "CHAIR", clue: "You sit on this at your desk or at the dinner table." },
+      { word: "CHALK", clue: "You write on the sidewalk or a blackboard with this." },
+      { word: "CHASE", clue: "When you run after someone trying to catch them." },
+      { word: "CHESS", clue: "A board game with kings, queens, knights, and pawns." },
+      { word: "CHEST", clue: "Pirates keep their treasure hidden in one of these." },
+      { word: "CHIPS", clue: "A crunchy snack that comes in a crinkly bag." },
+      { word: "CLEAN", clue: "The opposite of dirty — fresh and spotless." },
+      { word: "CLOCK", clue: "It has hands that spin around to tell you the time." },
+      { word: "CLOUD", clue: "Fluffy white puffs floating in the sky that can bring rain." },
+      { word: "CLOWN", clue: "A funny performer at the circus with a big red nose." },
+      { word: "CORAL", clue: "A colorful underwater structure where fish like to live." },
+      { word: "CRAFT", clue: "Art projects using scissors, glue, and paper are this." },
+      { word: "CRANE", clue: "A big machine on construction sites that lifts heavy things way up high." },
+      { word: "CRAZY", clue: "Something very wild, silly, or hard to believe." },
+      { word: "CROWN", clue: "A king or queen wears this shiny circle on their head." },
+      { word: "CURLY", clue: "Hair that spirals and bounces in ringlets." },
+      { word: "DAISY", clue: "A pretty flower with white petals and a yellow center." },
+      { word: "DANCE", clue: "Moving your body to the beat of music." },
+      { word: "DIZZY", clue: "The spinning feeling you get after going around and around." },
+      { word: "DODGE", clue: "To quickly move out of the way so something doesn't hit you." },
+      { word: "DOUGH", clue: "The soft, squishy mixture you knead before baking bread or pizza." },
+      { word: "DRAFT", clue: "A cool breeze coming through a crack in the window or door." },
+      { word: "DRAIN", clue: "Water swirls down through this at the bottom of your sink." },
+      { word: "DREAM", clue: "The stories your brain tells while you're asleep." },
+      { word: "DRESS", clue: "A one-piece outfit that girls often wear to parties." },
+      { word: "DRIFT", clue: "To float slowly along without trying, like a leaf on water." },
+      { word: "DRINK", clue: "Water, juice, or lemonade — something to swallow that isn't food." },
+      { word: "DRUMS", clue: "You hit these musical instruments with sticks to make a beat." },
+      { word: "EAGLE", clue: "A large, powerful bird with sharp talons and keen eyesight." },
+      { word: "EARTH", clue: "The planet we all live on — the blue and green one." },
+      { word: "EIGHT", clue: "The number that comes after seven and before nine." },
+      { word: "ELBOW", clue: "The bony bendy part in the middle of your arm." },
+      { word: "FAIRY", clue: "A tiny magical creature with wings that can grant wishes." },
+      { word: "FANCY", clue: "Extra special and elegant, like a fancy dinner with candles." },
+      { word: "FEAST", clue: "A huge, delicious meal with lots of food for everyone." },
+      { word: "FIELD", clue: "A wide open grassy area where you might play soccer." },
+      { word: "FLAME", clue: "The bright, flickering light at the tip of a candle or campfire." },
+      { word: "FLASH", clue: "A sudden burst of bright light, like lightning in a storm." },
+      { word: "FLOAT", clue: "To rest gently on top of water without sinking." },
+      { word: "FLOOD", clue: "When so much rain falls that water covers the streets." },
+      { word: "FLOUR", clue: "A white powder made from wheat that you use to bake cakes." },
+      { word: "FLUTE", clue: "A long, skinny musical instrument you blow across to make music." },
+      { word: "FOGGY", clue: "When thick mist makes it hard to see very far ahead." },
+      { word: "FRAME", clue: "The border around a picture or painting hanging on the wall." },
+      { word: "FRESH", clue: "Cool, clean, and new — like fresh air or fresh-baked cookies." },
+      { word: "FROST", clue: "The thin layer of ice crystals that forms on windows on cold mornings." },
+      { word: "FRUIT", clue: "Apples, bananas, and oranges are all types of this sweet food." },
+      { word: "FUNNY", clue: "Something that makes you laugh out loud." },
+      { word: "GIANT", clue: "Something extremely huge — much bigger than normal." },
+      { word: "GLOBE", clue: "A round model of the Earth that sits on a stand and spins." },
+      { word: "GOOSE", clue: "A large bird like a duck that honks and can be a bit grumpy." },
+      { word: "GRACE", clue: "Moving in a smooth, beautiful, and elegant way." },
+      { word: "GRAPE", clue: "A small, round fruit that grows in bunches and can be purple or green." },
+      { word: "GRASS", clue: "The green blades that cover lawns and parks." },
+      { word: "GREAT", clue: "Really, really good — better than just good." },
+      { word: "GREEN", clue: "The color of leaves, grass, and frogs." },
+      { word: "GROAN", clue: "The low sound you make when something is really annoying or painful." },
+      { word: "GUESS", clue: "When you don't know the answer for sure, you take one of these." },
+      { word: "HAPPY", clue: "The feeling you get when something good happens and you smile." },
+      { word: "HEART", clue: "The organ in your chest that pumps blood — also a symbol of love." },
+      { word: "HERBS", clue: "Plants like basil, mint, and rosemary used to add flavor to food." },
+      { word: "HIPPO", clue: "A very large, round animal that loves to wallow in rivers in Africa." },
+      { word: "HONEY", clue: "A thick, golden, sweet liquid that bees make." },
+      { word: "HORSE", clue: "A large animal you can ride that says neigh." },
+      { word: "HOUSE", clue: "The building where a family lives, with rooms and a roof." },
+      { word: "HUMOR", clue: "The ability to find things funny and make people laugh." },
+      { word: "HYENA", clue: "A wild animal from Africa that makes a sound like laughing." },
+      { word: "JOKER", clue: "Someone who loves to play pranks and tell jokes." },
+      { word: "JUMBO", clue: "Extra, extra large — like a jumbo jet or jumbo popcorn." },
+      { word: "JUMPY", clue: "Easily startled — like when someone sneaks up and scares you." },
+      { word: "KNIFE", clue: "A sharp tool with a blade used to cut food at dinner." },
+      { word: "KNOCK", clue: "What you do on a door before entering — tap tap tap!" },
+      { word: "KOALA", clue: "A fluffy Australian animal that sleeps in eucalyptus trees." },
+      { word: "LABEL", clue: "A small sticker or tag that tells you what something is." },
+      { word: "LARGE", clue: "Bigger than medium but not quite as big as huge." },
+      { word: "LASER", clue: "A very focused beam of light used in everything from pointers to surgery." },
+      { word: "LAUGH", clue: "The sound that bursts out of you when something is really funny." },
+      { word: "LEARN", clue: "What you do at school when you pick up new knowledge and skills." },
+      { word: "LEMON", clue: "A sour yellow citrus fruit used to make lemonade." },
+      { word: "LIGHT", clue: "What a lamp or the sun gives off so you can see in the dark." },
+      { word: "LILAC", clue: "A pale purple color — also a flower with a sweet smell." },
+      { word: "LLAMA", clue: "A fluffy South American animal related to a camel that spits when upset." },
+      { word: "LODGE", clue: "A cozy cabin in the woods or mountains where you stay on vacation." },
+      { word: "LUCKY", clue: "When good things happen to you by chance — like finding a four-leaf clover." },
+      { word: "LUNCH", clue: "The meal you eat in the middle of the day." },
+      { word: "MAGIC", clue: "Tricks, spells, and wonders that seem impossible to explain." },
+      { word: "MAPLE", clue: "A tree whose leaves turn bright red in fall — also makes syrup!" },
+      { word: "MARCH", clue: "The third month of the year, and also what soldiers do in step." },
+      { word: "MATCH", clue: "A tiny stick you strike to make fire — or when two things are the same." },
+      { word: "MELON", clue: "A big, juicy fruit with a tough outer rind — watermelon is one kind." },
+      { word: "MERRY", clue: "Cheerful and full of joy — like you feel at a holiday party." },
+      { word: "METAL", clue: "A hard shiny material like iron, gold, or aluminum." },
+      { word: "MONEY", clue: "Coins and bills you use to buy things at the store." },
+      { word: "MONTH", clue: "January, February, March — each one of these is about 30 days long." },
+      { word: "MOODY", clue: "When your feelings keep changing from happy to sad and back again." },
+      { word: "MOUSE", clue: "A tiny furry animal with a long tail — or the thing you click on a computer." },
+      { word: "MOUTH", clue: "The part of your face you use to eat, talk, and smile." },
+      { word: "MOVIE", clue: "A story told with moving pictures that you watch on a big screen." },
+      { word: "MUDDY", clue: "Covered in soft, wet dirt — usually after playing outside in the rain." },
+      { word: "MUSIC", clue: "Songs and melodies made with instruments or voices." },
+      { word: "NIGHT", clue: "The dark part of the day when the stars come out and you go to sleep." },
+      { word: "NINJA", clue: "A stealthy warrior from Japan who moves in silence." },
+      { word: "NOBLE", clue: "Someone with very good, honest, and honorable character." },
+      { word: "NORTH", clue: "The direction that a compass needle always points toward." },
+      { word: "NOVEL", clue: "A long story written in a book — like Harry Potter!" },
+      { word: "NUTTY", clue: "A little silly or wacky — also tastes like nuts!" },
+      { word: "OCEAN", clue: "The huge body of salty water that covers most of the Earth." },
+      { word: "OLIVE", clue: "A small oval fruit used on pizza or pressed to make cooking oil." },
+      { word: "OTTER", clue: "A playful water animal that loves to float on its back holding hands with friends." },
+      { word: "PANDA", clue: "A black-and-white bear from China that eats bamboo all day." },
+      { word: "PAPER", clue: "A thin flat sheet you write on, draw on, or fold into origami." },
+      { word: "PARTY", clue: "A celebration with friends, music, cake, and games." },
+      { word: "PASTA", clue: "Noodles made from flour and water — spaghetti and macaroni are kinds." },
+      { word: "PEACH", clue: "A soft, fuzzy fruit with a sweet orange-pink flesh inside." },
+      { word: "PEARL", clue: "A smooth, round gem that oysters make inside their shells." },
+      { word: "PENNY", clue: "The smallest coin worth one cent." },
+      { word: "PIANO", clue: "A large musical instrument with black and white keys you press." },
+      { word: "PILOT", clue: "The person in the cockpit who flies the airplane." },
+      { word: "PIZZA", clue: "A round dough topped with sauce, cheese, and your favorite toppings." },
+      { word: "PLACE", clue: "A specific spot or location — like your favorite place to play." },
+      { word: "PLANE", clue: "A flying vehicle with wings that takes you across the sky." },
+      { word: "PLANT", clue: "A living thing with roots and leaves that grows in soil." },
+      { word: "PLATE", clue: "The flat round dish you put your food on at mealtimes." },
+      { word: "POINT", clue: "The sharp tip at the end of a pencil — or what you score in a game." },
+      { word: "POLAR", clue: "Relating to the North or South Pole — very cold and icy." },
+      { word: "POPPY", clue: "A bright red flower often seen in fields — also a girl's name." },
+      { word: "POWER", clue: "The energy or force that makes things work — like electricity." },
+      { word: "PRICE", clue: "How much money something costs at the store." },
+      { word: "PRIDE", clue: "The great feeling you get when you've done something really well." },
+      { word: "PRIZE", clue: "A reward you win for coming first or doing something great." },
+      { word: "PROUD", clue: "Feeling really pleased with yourself or someone else for an achievement." },
+      { word: "PUPPY", clue: "A baby dog that loves to play, chew things, and lick your face." },
+      { word: "QUEEN", clue: "A female ruler of a kingdom who wears a crown." },
+      { word: "QUICK", clue: "Very fast — done in almost no time at all." },
+      { word: "QUIET", clue: "Making very little noise — like a library or a sleeping baby." },
+      { word: "RAINY", clue: "Weather with lots of drops of water falling from the clouds." },
+      { word: "RAPID", clue: "Moving or happening very fast." },
+      { word: "REACH", clue: "To stretch your arm out to grab something just a bit too far away." },
+      { word: "READY", clue: "Fully prepared and set to go — like before a race starts." },
+      { word: "RIDER", clue: "Someone who sits on and steers a horse or a bike." },
+      { word: "RIVER", clue: "A long, flowing body of fresh water that runs to the sea." },
+      { word: "ROBOT", clue: "A machine that can be programmed to do jobs for people." },
+      { word: "ROCKY", clue: "Full of rocks — like a bumpy mountain trail." },
+      { word: "ROUND", clue: "Shaped like a circle or a ball — no corners or edges." },
+      { word: "ROYAL", clue: "Belonging to a king or queen — fit for a palace." },
+      { word: "RULER", clue: "A flat stick used to draw straight lines and measure things." },
+      { word: "RUSTY", clue: "Covered in orange-brown rust from being wet for too long." },
+      { word: "SALAD", clue: "A mix of fresh vegetables, often with lettuce, eaten cold." },
+      { word: "SANDY", clue: "Covered in or full of sand, like a beach." },
+      { word: "SAUCE", clue: "A liquid topping for food — like tomato sauce on pasta." },
+      { word: "SCARY", clue: "Something that makes your heart race and gives you the shivers." },
+      { word: "SCOUT", clue: "Someone sent ahead to explore and report back — or a group kids join." },
+      { word: "SEVEN", clue: "The number after six and before eight — also days in a week." },
+      { word: "SHADE", clue: "The cool, dark area blocked from the sun by a tree or building." },
+      { word: "SHAKE", clue: "To move something quickly back and forth — like a snow globe." },
+      { word: "SHAPE", clue: "The outline of something — circles, squares, and triangles are all these." },
+      { word: "SHARE", clue: "To give some of what you have to someone else." },
+      { word: "SHARK", clue: "A large, powerful ocean fish with rows of very sharp teeth." },
+      { word: "SHARP", clue: "Having a very fine edge or point that can cut easily." },
+      { word: "SHEEP", clue: "A fluffy farm animal that says baa and gives us wool." },
+      { word: "SHELF", clue: "A flat board attached to a wall where you store books or toys." },
+      { word: "SHELL", clue: "The hard outer covering of a snail, crab, or egg." },
+      { word: "SHINE", clue: "To give off a bright, glowing light — like the sun or a polished gem." },
+      { word: "SHIRT", clue: "A piece of clothing you wear on the top half of your body." },
+      { word: "SHORT", clue: "Not very tall — the opposite of tall." },
+      { word: "SHOUT", clue: "To speak very loudly — louder than talking but not quite a scream." },
+      { word: "SIGHT", clue: "The ability to see — one of your five senses." },
+      { word: "SILLY", clue: "Doing funny, goofy things that make everyone laugh." },
+      { word: "SKATE", clue: "To glide across ice or pavement on blades or wheels." },
+      { word: "SKILL", clue: "An ability you get good at through lots of practice." },
+      { word: "SLICE", clue: "A flat piece cut from something bigger, like a slice of pizza." },
+      { word: "SLIDE", clue: "The thing at the playground you climb up and zoom down." },
+      { word: "SLIME", clue: "A gooey, stretchy, squishy stuff kids love to make and play with." },
+      { word: "SMALL", clue: "Tiny — much less big than normal." },
+      { word: "SMART", clue: "Very intelligent — quick to learn and good at solving problems." },
+      { word: "SMILE", clue: "The happy expression where the corners of your mouth turn up." },
+      { word: "SMOKE", clue: "The grey, wispy stuff that rises from a fire." },
+      { word: "SNAIL", clue: "A slow little creature that carries its spiral shell on its back." },
+      { word: "SNAKE", clue: "A long reptile with no legs that slithers along the ground." },
+      { word: "SNEAK", clue: "To move very quietly so no one hears or sees you." },
+      { word: "SNORE", clue: "The loud rumbling sound some people make while they sleep." },
+      { word: "SOLAR", clue: "Related to the sun — like solar panels that turn sunlight into power." },
+      { word: "SOLID", clue: "Hard and firm — not liquid or gas, like a rock or an ice cube." },
+      { word: "SPACE", clue: "The vast universe beyond Earth's atmosphere where stars and planets live." },
+      { word: "SPARK", clue: "A tiny flash of fire that jumps from a flame or electrical wire." },
+      { word: "SPEAK", clue: "To say words out loud — to talk to someone." },
+      { word: "SPICE", clue: "A flavoring like cinnamon or pepper that makes food taste interesting." },
+      { word: "SPINE", clue: "The long column of bones running down the middle of your back." },
+      { word: "SPORT", clue: "A physical activity with rules played for fun or competition." },
+      { word: "SPRAY", clue: "To shoot liquid out in a fine mist — like a spray bottle." },
+      { word: "STAGE", clue: "The raised platform where actors perform in a theater." },
+      { word: "STARS", clue: "The tiny points of light you see glittering in the night sky." },
+      { word: "START", clue: "To begin something — the opposite of finish." },
+      { word: "STEAL", clue: "To take something that doesn't belong to you — which is wrong!" },
+      { word: "STEAM", clue: "Hot water vapor that rises from a boiling pot." },
+      { word: "STEEL", clue: "A very strong metal used to build bridges and skyscrapers." },
+      { word: "STICK", clue: "A thin piece of wood fallen from a tree — dogs love to fetch these." },
+      { word: "STILL", clue: "Not moving — completely motionless and quiet." },
+      { word: "STING", clue: "The sharp pain from a bee or jellyfish that pokes your skin." },
+      { word: "STONE", clue: "A small, hard piece of rock you might skip across a pond." },
+      { word: "STORM", clue: "Wild weather with heavy rain, thunder, lightning, or snow." },
+      { word: "STORY", clue: "A tale with characters, a beginning, middle, and end." },
+      { word: "STRAW", clue: "A thin tube you put in a drink to sip it up." },
+      { word: "STUCK", clue: "When something can't move or you can't find a solution." },
+      { word: "SUGAR", clue: "The sweet white crystals you add to cakes and cookies." },
+      { word: "SUNNY", clue: "Bright and warm with no clouds blocking the sun." },
+      { word: "SUPER", clue: "Way better than normal — like a superhero!" },
+      { word: "SWEET", clue: "A sugary taste — like candy, fruit, or a kind person." },
+      { word: "SWIFT", clue: "Moving very quickly and with ease." },
+      { word: "SWORD", clue: "A long metal blade carried by knights and warriors." },
+      { word: "TABLE", clue: "A flat-topped piece of furniture with legs where you eat meals." },
+      { word: "TASTE", clue: "The sense that lets your tongue tell if food is sweet, salty, or sour." },
+      { word: "TIGER", clue: "A large orange and black striped wild cat from Asia." },
+      { word: "TOAST", clue: "Bread that's been heated until it's golden brown and crispy." },
+      { word: "TOKEN", clue: "A small coin or chip used instead of money — like in arcade games." },
+      { word: "TOOTH", clue: "One of the hard white things in your mouth you brush every day." },
+      { word: "TORCH", clue: "A stick with fire on one end — or another word for a flashlight." },
+      { word: "TOUCH", clue: "The sense you use when you feel something with your fingers." },
+      { word: "TOWEL", clue: "A soft cloth you dry yourself with after a bath or swim." },
+      { word: "TOWER", clue: "A very tall, narrow building — like a castle tower or the Eiffel Tower." },
+      { word: "TRACK", clue: "A path for running or racing — or the marks left by an animal." },
+      { word: "TRAIL", clue: "A narrow path through the woods or mountains for hiking." },
+      { word: "TRAIN", clue: "A long vehicle that runs on rails and carries passengers or cargo." },
+      { word: "TREAT", clue: "A special, yummy reward — like ice cream or a cookie." },
+      { word: "TRICK", clue: "A clever move that fools or surprises someone." },
+      { word: "TROOP", clue: "A group of soldiers, scouts, or animals traveling together." },
+      { word: "TRUCK", clue: "A large vehicle with a big cargo area used to transport heavy loads." },
+      { word: "TRULY", clue: "Completely and honestly — meaning every word of it." },
+      { word: "TRUNK", clue: "An elephant's long nose — or the big storage compartment in a car." },
+      { word: "TRUST", clue: "Believing someone is honest and will keep their promises." },
+      { word: "TULIP", clue: "A beautiful cup-shaped flower that comes in many bright colors in spring." },
+      { word: "TWIRL", clue: "To spin around gracefully in a circle, like a ballet dancer." },
+      { word: "TWIST", clue: "To wind or turn something around — like wringing out a wet towel." },
+      { word: "UNCLE", clue: "Your mom's or dad's brother — part of your family." },
+      { word: "UPSET", clue: "Feeling sad, hurt, or bothered by something that happened." },
+      { word: "VALID", clue: "Correct and accepted — like a valid ticket to get into the show." },
+      { word: "VALUE", clue: "How important or useful something is — or how much it's worth." },
+      { word: "VAULT", clue: "A very secure, locked room in a bank where money is kept safe." },
+      { word: "VIOLA", clue: "A stringed instrument slightly bigger than a violin, with a deeper sound." },
+      { word: "VISIT", clue: "To go and spend time with someone at their home." },
+      { word: "VITAL", clue: "Absolutely necessary — you can't do without it." },
+      { word: "VOICE", clue: "The sound that comes out of your mouth when you talk or sing." },
+      { word: "WAGON", clue: "A four-wheeled cart you pull along — great for hauling toys." },
+      { word: "WATCH", clue: "A small clock you wear on your wrist to tell the time." },
+      { word: "WATER", clue: "The clear liquid that fills oceans, rivers, and your drinking glass." },
+      { word: "WEDGE", clue: "A triangle-shaped piece — like a wedge of cheese or a door stopper." },
+      { word: "WEIRD", clue: "Strange and unusual in an unexpected way." },
+      { word: "WHALE", clue: "The largest animal on Earth — a huge mammal that lives in the ocean." },
+      { word: "WHEAT", clue: "A grain crop grown in fields that is ground into flour for bread." },
+      { word: "WHEEL", clue: "A round, spinning object that lets cars and bikes roll forward." },
+      { word: "WHITE", clue: "The color of snow, clouds, and fresh paper." },
+      { word: "WHOLE", clue: "All of something — not a piece, the entire thing." },
+      { word: "WITCH", clue: "A magical woman in stories who flies on a broomstick and casts spells." },
+      { word: "WORLD", clue: "The planet Earth and everything on it." },
+      { word: "WORRY", clue: "To feel anxious and uneasy about something that might go wrong." },
+      { word: "WORTH", clue: "The value of something — how much it deserves in exchange." },
+      { word: "WRECK", clue: "Something badly damaged or crashed — like a car wreck." },
+      { word: "YACHT", clue: "A fancy, expensive sailboat used for racing or leisure." },
+      { word: "YOUNG", clue: "Not old yet — still early in life, like kids and baby animals." },
+      { word: "YOUTH", clue: "The time of life when you are young — your childhood and teen years." },
+      { word: "ZEBRA", clue: "A black-and-white striped African animal related to a horse." },
+      { word: "ZESTY", clue: "Full of energy and flavor — lemon is zesty!" },
+    ];
+
+    const KEYBOARD_ROWS = [
+      ['Q','W','E','R','T','Y','U','I','O','P'],
+      ['A','S','D','F','G','H','J','K','L'],
+      ['ENTER','Z','X','C','V','B','N','M','⌫']
+    ];
+
+    let secret = '';
+    let clue = '';
+    let currentRow = 0;
+    let currentCol = 0;
+    let currentGuess = [];
+    let gameOver = false;
+    let hintUsed = false;
+    let tileEls = [];
+    let keyEls = {};
+
+    function pickWord() {
+      const entry = WORDS[Math.floor(Math.random() * WORDS.length)];
+      secret = entry.word;
+      clue = entry.clue;
+    }
+
+    function buildBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      tileEls = [];
+      for (let r = 0; r < 6; r++) {
+        const row = document.createElement('div');
+        row.classList.add('row');
+        row.id = `row-${r}`;
+        const rowTiles = [];
+        for (let c = 0; c < 5; c++) {
+          const tile = document.createElement('div');
+          tile.classList.add('tile');
+          row.appendChild(tile);
+          rowTiles.push(tile);
+        }
+        board.appendChild(row);
+        tileEls.push(rowTiles);
+      }
+    }
+
+    function buildKeyboard() {
+      const kb = document.getElementById('keyboard');
+      kb.innerHTML = '';
+      keyEls = {};
+      KEYBOARD_ROWS.forEach(row => {
+        const rowEl = document.createElement('div');
+        rowEl.classList.add('key-row');
+        row.forEach(key => {
+          const btn = document.createElement('button');
+          btn.classList.add('key');
+          btn.textContent = key;
+          if (key === 'ENTER' || key === '⌫') btn.classList.add('wide');
+          btn.addEventListener('click', () => handleKey(key));
+          rowEl.appendChild(btn);
+          keyEls[key] = btn;
+        });
+        kb.appendChild(rowEl);
+      });
+    }
+
+    function showHint() {
+      if (hintUsed) return;
+      hintUsed = true;
+      document.getElementById('hint-text').textContent = `💡 ${clue}`;
+      document.getElementById('hint-btn').disabled = true;
+    }
+
+    function handleKey(key) {
+      if (gameOver) return;
+
+      if (key === '⌫' || key === 'Backspace') {
+        if (currentCol > 0) {
+          currentCol--;
+          currentGuess.pop();
+          tileEls[currentRow][currentCol].textContent = '';
+          tileEls[currentRow][currentCol].classList.remove('filled');
+        }
+        return;
+      }
+
+      if (key === 'ENTER' || key === 'Enter') {
+        submitGuess();
+        return;
+      }
+
+      if (/^[A-Za-z]$/.test(key) && currentCol < 5) {
+        const letter = key.toUpperCase();
+        currentGuess.push(letter);
+        const tile = tileEls[currentRow][currentCol];
+        tile.textContent = letter;
+        tile.classList.add('filled');
+        currentCol++;
+      }
+    }
+
+    function submitGuess() {
+      if (currentCol < 5) {
+        showToast('Not enough letters!');
+        shakeRow(currentRow);
+        return;
+      }
+
+      const guess = currentGuess.join('');
+      const result = scoreGuess(guess, secret);
+
+      revealRow(currentRow, result, () => {
+        updateKeys(guess, result);
+
+        if (guess === secret) {
+          gameOver = true;
+          const msgs = ['Genius! 🧠', 'Magnificent! ✨', 'Impressive! 🌟', 'Splendid! 🎉', 'Great! 👏', 'Phew! 😅'];
+          setTimeout(() => showToast(msgs[currentRow] || 'Nice!', 2500), 300);
+          document.getElementById('new-game-btn').classList.add('visible');
+          return;
+        }
+
+        currentRow++;
+        currentCol = 0;
+        currentGuess = [];
+
+        if (currentRow >= 6) {
+          gameOver = true;
+          setTimeout(() => showToast(`The word was ${secret}`, 3000), 300);
+          document.getElementById('new-game-btn').classList.add('visible');
+        }
+      });
+    }
+
+    function scoreGuess(guess, answer) {
+      const result = Array(5).fill('absent');
+      const answerArr = answer.split('');
+      const guessArr  = guess.split('');
+      const used = Array(5).fill(false);
+
+      // First pass: correct
+      for (let i = 0; i < 5; i++) {
+        if (guessArr[i] === answerArr[i]) {
+          result[i] = 'correct';
+          used[i] = true;
+          answerArr[i] = null;
+        }
+      }
+
+      // Second pass: present
+      for (let i = 0; i < 5; i++) {
+        if (result[i] === 'correct') continue;
+        const idx = answerArr.indexOf(guessArr[i]);
+        if (idx !== -1) {
+          result[i] = 'present';
+          answerArr[idx] = null;
+        }
+      }
+
+      return result;
+    }
+
+    function revealRow(row, result, callback) {
+      const tiles = tileEls[row];
+      tiles.forEach((tile, i) => {
+        setTimeout(() => {
+          tile.classList.add('flip');
+          setTimeout(() => {
+            tile.classList.add(result[i]);
+          }, 250);
+          if (i === 4) {
+            setTimeout(callback, 600);
+          }
+        }, i * 120);
+      });
+    }
+
+    function updateKeys(guess, result) {
+      const priority = { correct: 3, present: 2, absent: 1 };
+      for (let i = 0; i < 5; i++) {
+        const letter = guess[i];
+        const key = keyEls[letter];
+        if (!key) continue;
+        const current = key.dataset.state || '';
+        const newState = result[i];
+        if ((priority[newState] || 0) > (priority[current] || 0)) {
+          key.classList.remove('correct', 'present', 'absent');
+          key.classList.add(newState);
+          key.dataset.state = newState;
+        }
+      }
+    }
+
+    function shakeRow(row) {
+      const rowEl = document.getElementById(`row-${row}`);
+      rowEl.classList.add('shake');
+      rowEl.addEventListener('animationend', () => rowEl.classList.remove('shake'), { once: true });
+    }
+
+    let toastTimer = null;
+    function showToast(msg, duration = 1600) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+    }
+
+    function newGame() {
+      currentRow = 0;
+      currentCol = 0;
+      currentGuess = [];
+      gameOver = false;
+      hintUsed = false;
+      document.getElementById('hint-btn').disabled = false;
+      document.getElementById('hint-text').textContent = '';
+      document.getElementById('new-game-btn').classList.remove('visible');
+      pickWord();
+      buildBoard();
+      buildKeyboard();
+    }
+
+    // Physical keyboard support
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      handleKey(e.key);
+    });
+
+    newGame();
+  </script>
+</body>
+</html>
