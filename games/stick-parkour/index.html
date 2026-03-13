@@ -19,9 +19,9 @@
     canvas { border: 3px solid #fff; border-radius: 10px; display: block; max-width: 100%; height: auto; }
     .controls { color: #aaa; margin-top: 10px; font-size: 0.85em; text-align: center; }
 
-    /* Touch controls — only visible on touch/small screens */
+    /* Touch controls — visible by default, hidden on desktop */
     .touch-controls {
-      display: none;
+      display: flex;
       position: fixed;
       bottom: 24px;
       left: 0; right: 0;
@@ -31,8 +31,10 @@
       justify-content: space-between;
       z-index: 10;
     }
-    @media (pointer: coarse), (max-width: 700px) {
-      .touch-controls { display: flex; }
+    @media (pointer: fine) and (min-width: 701px) {
+      .touch-controls { display: none; }
+    }
+    @media (max-width: 700px) {
       .controls { display: none; }
     }
     .touch-group { display: flex; gap: 14px; pointer-events: all; }
