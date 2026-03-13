@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stick Parkour - Micahman</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    h1 { color: #fff; margin-bottom: 10px; font-size: 1.8em; letter-spacing: 2px; }
+    canvas { border: 3px solid #fff; border-radius: 10px; display: block; }
+    .controls { color: #aaa; margin-top: 10px; font-size: 0.85em; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>🏃 Stick Parkour</h1>
+  <canvas id="game" width="800" height="500"></canvas>
+  <p class="controls">
+    ← → to move &nbsp;|&nbsp; ↑ or Space to jump &nbsp;|&nbsp;
+    Touch a wall &amp; press ↑ to <strong style="color:#fff">WALL JUMP!</strong> &nbsp;|&nbsp;
+    Press ↑ again in the air to <strong style="color:#fff">DOUBLE JUMP!</strong> &nbsp;|&nbsp;
+    Sprint + jump for extra height!
+  </p>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    // ─── Physics ───────────────────────────────────────────────
+    const GRAVITY       = 0.55;
+    const MAX_FALL      = 14;
+    const JUMP_VY       = -13;
+    const RUNJUMP_VY    = -15.5;  // extra height when sprinting at full speed
+    const DOUBLEJUMP_VY = -11;    // second jump in the air (a bit weaker)
+    const WALLJUMP_VY   = -12;
+    const WALLJUMP_VX   = 7;
+    const SPEED         = 5;
+    const FRICTION      = 0.78;
+    const PW = 20, PH = 55;
+
+    // ─── Player ────────────────────────────────────────────────
+    const player = {
+      x: 80, y: 380,
+      vx: 0, vy: 0,
+      onGround: false,
+      wallLeft: false,
+      wallRight: false,
+      facing: 1,
+      walkCycle: 0,
+      jumpConsumed: false,
+      jumpsLeft: 2,         // 2 = can still double-jump
+    };
+
+    // ─── Spawn + loop state ────────────────────────────────────
+    let spawnX = 80, spawnY = 380;
+    let loopCount        = 0;
+    let loopFlash        = 0;   // frames remaining for "Loop N!" banner
+    let hitFlash         = 0;   // frames remaining for obstacle-hit flash
+    let doubleJumpEffect = null; // { x, y, age } — ring burst on double jump
+
+    // ─── Checkpoints ───────────────────────────────────────────
+    const CHECKPOINT_DEFS = [
+      { x: 535,  y: 248,  label: '1' },
+      { x: 952,  y:  38,  label: '2' },
+      { x: 1094, y: -354, label: '3' },
+      { x: 952,  y: -744, label: '4' },
+    ];
+    let checkpoints = CHECKPOINT_DEFS.map(c => ({ ...c, activated: false }));
+
+    // ─── Level platforms ───────────────────────────────────────
+    const platforms = [
+      // Ground (extended so player never walks off right edge)
+      { x: -200, y: 450, w: 1800, h: 60, color: '#5d4037' },
+
+      // Intro hop-hop section
+      { x: 180,  y: 375, w: 110, h: 18, color: '#388e3c' },
+      { x: 350,  y: 305, w: 90,  h: 18, color: '#388e3c' },
+      { x: 490,  y: 248, w: 90,  h: 18, color: '#388e3c' }, // CP 1 platform
+      { x: 640,  y: 305, w: 80,  h: 18, color: '#388e3c' },
+      { x: 785,  y: 375, w: 95,  h: 18, color: '#388e3c' },
+
+      // Tower outer walls (left + right) — stop short of ground so player can walk in
+      { x: 880,  y: -2500, w: 22, h: 2800, color: '#6d4c41' },
+      { x: 1150, y: -2500, w: 22, h: 2800, color: '#6d4c41' },
+
+      // Tower entry ledge — NARROW (right side only), leaving a ~100px gap on the
+      // left (x=902–1000) so the player can jump up through it from ground level
+      { x: 1002, y: 305, w: 148, h: 18, color: '#546e7a' },
+
+      // Tower floors — alternating left / right, ~130px vertical spacing
+      { x: 1060, y:  168, w: 68,  h: 18, color: '#1565c0' }, // F1 right
+      { x: 902,  y:   38, w: 100, h: 18, color: '#546e7a' }, // F2 left  (CP 2)
+      { x: 1060, y:  -94, w: 68,  h: 18, color: '#1565c0' }, // F3 right
+      { x: 902,  y: -224, w: 80,  h: 18, color: '#388e3c' }, // F4 left
+      { x: 1060, y: -354, w: 68,  h: 18, color: '#546e7a' }, // F5 right (CP 3)
+      { x: 902,  y: -484, w: 80,  h: 18, color: '#388e3c' }, // F6 left
+      { x: 1060, y: -614, w: 68,  h: 18, color: '#1565c0' }, // F7 right
+      { x: 902,  y: -744, w: 100, h: 18, color: '#546e7a' }, // F8 left  (CP 4)
+      { x: 1060, y: -874, w: 68,  h: 18, color: '#1565c0' }, // F9 right
+      { x: 902,  y:-1004, w: 80,  h: 18, color: '#f57c00' }, // F10 left
+
+      // Finish platform (top) — starts at x=990 leaving ~88px gap on left for entry
+      { x: 990, y: -1134, w: 182, h: 22, color: '#fdd835', isFinish: true },
+    ];
+
+    // ─── Obstacles (one revealed per loop completion) ──────────
+    // Each swings as a pendulum: tip = pivot + len at currentAngle from vertical
+    const allObstacles = [
+      // Loop 1 — swings across the tower entry gap (forces timing)
+      { pivotX: 955,  pivotY: 220,  len: 90, maxAngle: 0.72, freq: 1.4, phase: 0.0 },
+      // Loop 2 — mid-tower, blocks floor 4 left platform approach
+      { pivotX: 942,  pivotY: -290, len: 80, maxAngle: 0.80, freq: 1.7, phase: 1.1 },
+      // Loop 3 — upper tower, near floor 8
+      { pivotX: 1094, pivotY: -680, len: 75, maxAngle: 0.75, freq: 2.1, phase: 2.3 },
+    ];
+
+    // Clouds spread across height of level
+    const clouds = [
+      { x: 100,  y:  60,   s: 1.0 }, { x: 450,  y:  35,  s: 0.85 },
+      { x: 750,  y:  70,   s: 1.1 }, { x: 250,  y: -120, s: 0.9  },
+      { x: 1430, y: -80,   s: 1.0 }, { x: 180,  y: -380, s: 0.8  },
+      { x: 1470, y: -430,  s: 1.1 }, { x: 300,  y: -700, s: 0.9  },
+      { x: 1400, y: -750,  s: 1.0 }, { x: 200,  y:-1050, s: 0.85 },
+      { x: 1450, y:-1100,  s: 0.95 },
+    ];
+
+    // ─── Input ─────────────────────────────────────────────────
+    const keys = {};
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))
+        e.preventDefault();
+    });
+    document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    // ─── Camera ────────────────────────────────────────────────
+    let camX = 0, camY = 0;
+
+    // ─── Collision helpers ─────────────────────────────────────
+    function overlap(a, b) {
+      return a.x < b.x + b.w && a.x + PW > b.x &&
+             a.y < b.y + b.h && a.y + PH > b.y;
+    }
+
+    function resolveX() {
+      player.wallLeft = player.wallRight = false;
+      for (const p of platforms) {
+        if (!overlap(player, p)) continue;
+        if (player.y + PH < p.y + 6) continue;
+        if (player.vx > 0) { player.x = p.x - PW;   player.wallRight = true; }
+        else               { player.x = p.x + p.w;  player.wallLeft  = true; }
+        player.vx = 0;
+      }
+    }
+
+    function resolveY() {
+      player.onGround = false;
+      for (const p of platforms) {
+        if (!overlap(player, p)) continue;
+        if (player.vy > 0) {
+          player.y = p.y - PH; player.vy = 0; player.onGround = true;
+          player.jumpsLeft = 2;
+          if (p.isFinish) triggerLoop();
+        } else {
+          player.y = p.y + p.h; player.vy = 0;
+        }
+      }
+    }
+
+    // ─── Loop / reset ──────────────────────────────────────────
+    function triggerLoop() {
+      loopCount++;
+      loopFlash = 200;
+      checkpoints = CHECKPOINT_DEFS.map(c => ({ ...c, activated: false }));
+      spawnX = 80; spawnY = 380;
+      player.x = spawnX; player.y = spawnY;
+      player.vx = 0; player.vy = 0;
+      camX = 0; camY = 0;
+    }
+
+    function respawn() {
+      player.x = spawnX; player.y = spawnY;
+      player.vx = 0; player.vy = 0;
+      hitFlash = 40;
+    }
+
+    // ─── Checkpoint detection ──────────────────────────────────
+    let cpFlash = 0, cpFlashLabel = '';
+    function checkCheckpoints() {
+      const cx = player.x + PW / 2, cy = player.y + PH / 2;
+      for (const cp of checkpoints) {
+        if (cp.activated) continue;
+        if (Math.abs(cx - cp.x) < 55 && Math.abs(cy - cp.y) < 70) {
+          cp.activated = true;
+          spawnX = cp.x - PW / 2;
+          spawnY = cp.y - PH - 4;
+          cpFlash = 120; cpFlashLabel = cp.label;
+        }
+      }
+    }
+
+    // ─── Obstacle logic ────────────────────────────────────────
+    function getObstacleTip(obs, t) {
+      const angle = obs.maxAngle * Math.sin(t * obs.freq + obs.phase);
+      return {
+        angle,
+        tipX: obs.pivotX + Math.sin(angle) * obs.len,
+        tipY: obs.pivotY + Math.cos(angle) * obs.len,
+      };
+    }
+
+    function checkObstacles(t) {
+      const active = Math.min(loopCount, allObstacles.length);
+      for (let i = 0; i < active; i++) {
+        const obs = allObstacles[i];
+        const { tipX, tipY } = getObstacleTip(obs, t);
+        // Sample points along the arm
+        for (let s = 0; s <= 1; s += 0.08) {
+          const px = obs.pivotX + (tipX - obs.pivotX) * s;
+          const py = obs.pivotY + (tipY - obs.pivotY) * s;
+          if (px > player.x - 10 && px < player.x + PW + 10 &&
+              py > player.y - 10 && py < player.y + PH + 10) {
+            respawn();
+            return;
+          }
+        }
+      }
+    }
+
+    // ─── Update ────────────────────────────────────────────────
+    function update() {
+      const left  = keys['ArrowLeft']  || keys['KeyA'];
+      const right = keys['ArrowRight'] || keys['KeyD'];
+      const jump  = keys['ArrowUp']    || keys['KeyW'] || keys['Space'];
+
+      if (left)       { player.vx = -SPEED; player.facing = -1; }
+      else if (right) { player.vx =  SPEED; player.facing =  1; }
+      else            { player.vx *= FRICTION; if (Math.abs(player.vx) < 0.1) player.vx = 0; }
+
+      if (jump && !player.jumpConsumed) {
+        const sprinting = Math.abs(player.vx) >= SPEED * 0.9;
+        if (player.onGround) {
+          // Run jump: extra height when sprinting
+          player.vy = sprinting ? RUNJUMP_VY : JUMP_VY;
+          player.jumpsLeft = 1;
+          player.jumpConsumed = true;
+        } else if (player.wallLeft) {
+          player.vy = WALLJUMP_VY; player.vx =  WALLJUMP_VX;
+          player.facing = 1; player.jumpsLeft = 1; player.jumpConsumed = true;
+        } else if (player.wallRight) {
+          player.vy = WALLJUMP_VY; player.vx = -WALLJUMP_VX;
+          player.facing = -1; player.jumpsLeft = 1; player.jumpConsumed = true;
+        } else if (player.jumpsLeft > 0) {
+          // Double jump — slight horizontal boost in whichever way you're moving
+          player.vy = DOUBLEJUMP_VY;
+          if (Math.abs(player.vx) > 0.5) player.vx *= 1.25;
+          player.jumpsLeft--;
+          player.jumpConsumed = true;
+          doubleJumpEffect = { x: player.x + PW/2, y: player.y + PH/2, age: 0 };
+        }
+      }
+      if (!jump) player.jumpConsumed = false;
+
+      const wallSliding = ((player.wallLeft && left) || (player.wallRight && right)) && !player.onGround;
+      player.vy += wallSliding ? GRAVITY * 0.25 : GRAVITY;
+      if (player.vy > MAX_FALL) player.vy = MAX_FALL;
+
+      player.x += player.vx;
+      resolveX();
+      player.y += player.vy;
+      resolveY();
+
+      if (Math.abs(player.vx) > 0.5 && player.onGround) player.walkCycle += 0.2;
+
+      checkCheckpoints();
+
+      const t = Date.now() / 1000;
+      checkObstacles(t);
+
+      // Camera
+      camX += (player.x - W * 0.38 - camX) * 0.10;
+      camY += (player.y - H * 0.55 - camY) * 0.08;
+      camY = Math.min(camY, 50);
+
+      // Fell off screen — respawn at checkpoint
+      if (player.y > camY + H + 140) respawn();
+
+      if (loopFlash > 0) loopFlash--;
+      if (cpFlash   > 0) cpFlash--;
+      if (hitFlash  > 0) hitFlash--;
+    }
+
+    // ─── Draw helpers ──────────────────────────────────────────
+    function drawBackground() {
+      const hi = Math.max(0, Math.min(1, -camY / 1200));
+      const r = Math.round(135 - hi * 60), g = Math.round(206 - hi * 80), b = 235;
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, `rgb(${r},${g},${b})`);
+      sky.addColorStop(1, `rgb(${r+28},${g+18},${b})`);
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawCloud(cx, cy, s) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 30*s, 0, Math.PI*2);
+      ctx.arc(cx+28*s, cy-12*s, 22*s, 0, Math.PI*2);
+      ctx.arc(cx+54*s, cy,      28*s, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    function drawPlatform(p) {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(p.x, p.y, p.w, Math.min(5, p.h));
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(p.x, p.y + p.h - Math.min(4,p.h), p.w, Math.min(4,p.h));
+    }
+
+    function drawStar(x, y, r) {
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i * Math.PI) / 5 - Math.PI / 2;
+        const d = i % 2 === 0 ? r : r * 0.45;
+        i === 0 ? ctx.moveTo(x + Math.cos(a)*d, y + Math.sin(a)*d)
+                : ctx.lineTo(x + Math.cos(a)*d, y + Math.sin(a)*d);
+      }
+      ctx.closePath();
+    }
+
+    function drawCheckpoints() {
+      const t = Date.now() / 1000;
+      for (const cp of checkpoints) {
+        const starY = cp.y - 38;
+        ctx.fillStyle = cp.activated ? '#ffd700' : '#9e9e9e';
+        ctx.fillRect(cp.x - 2, starY + 12, 4, cp.y - (starY + 12));
+        if (cp.activated) {
+          ctx.save(); ctx.globalAlpha = 0.22 + 0.1 * Math.sin(t * 4);
+          ctx.fillStyle = '#ffd700';
+          ctx.beginPath(); ctx.arc(cp.x, starY, 18, 0, Math.PI*2); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = '#ffd700'; drawStar(cp.x, starY, 12); ctx.fill();
+          ctx.strokeStyle = '#f57f17'; ctx.lineWidth = 1.5; ctx.stroke();
+        } else {
+          ctx.fillStyle = '#bdbdbd'; drawStar(cp.x, starY, 10); ctx.fill();
+          ctx.strokeStyle = '#757575'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+        ctx.fillStyle = cp.activated ? '#333' : '#555';
+        ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(cp.label, cp.x, starY + 4); ctx.textAlign = 'left';
+      }
+    }
+
+    function drawObstacles(t) {
+      const active = Math.min(loopCount, allObstacles.length);
+      for (let i = 0; i < active; i++) {
+        const obs = allObstacles[i];
+        const { angle, tipX, tipY } = getObstacleTip(obs, t);
+        const px = obs.pivotX, py = obs.pivotY;
+
+        // Rope/chain
+        ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(px, py);
+        ctx.lineTo(tipX, tipY); ctx.stroke();
+
+        // Log (thick rounded rectangle at tip, rotated to match swing)
+        ctx.save();
+        ctx.translate(tipX, tipY);
+        ctx.rotate(angle);
+        // Log body
+        ctx.fillStyle = '#8d6e63';
+        ctx.strokeStyle = '#4e342e'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(-7, -22, 14, 44, 4);
+        ctx.fill(); ctx.stroke();
+        // Wood grain
+        ctx.strokeStyle = '#6d4c41'; ctx.lineWidth = 1;
+        [-3, 0, 3].forEach(dx => {
+          ctx.beginPath(); ctx.moveTo(dx, -17); ctx.lineTo(dx, 17); ctx.stroke();
+        });
+        // End caps (darker circles on log ends)
+        ctx.fillStyle = '#5d4037';
+        ctx.beginPath(); ctx.ellipse(0, -22, 7, 4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(0,  22, 7, 4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+
+        // Pivot bolt
+        ctx.fillStyle = '#333';
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    }
+
+    function drawFinishFlag() {
+      const fb = platforms[platforms.length - 1];
+      const fx = fb.x + fb.w / 2;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(fx - 1, fb.y - 65, 3, 65);
+      ctx.fillStyle = '#e53935';
+      ctx.fillRect(fx + 2, fb.y - 65, 38, 24);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Arial';
+      ctx.fillText('FINISH!', fx + 4, fb.y - 49);
+    }
+
+    function drawStick() {
+      const p = player;
+      const cx = p.x + PW / 2, top = p.y;
+      const headCY = top + 10, neckY = top + 19, waistY = top + 38, feetY = top + PH;
+      const shoulderY = neckY + 8;
+      const moving = Math.abs(p.vx) > 0.5;
+
+      let legSwing = 0, armSwing = 0;
+      if (p.onGround && moving)   { legSwing = Math.sin(p.walkCycle) * 0.65; armSwing = Math.sin(p.walkCycle + Math.PI) * 0.55; }
+      else if (!p.onGround)       { legSwing = 0.45; armSwing = 0.4; }
+
+      ctx.lineCap = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = '#222';
+
+      // Hit flash — turn player red briefly
+      const skinColor = hitFlash > 0 && Math.floor(hitFlash / 4) % 2 === 0 ? '#ff5252' : '#ffcc99';
+
+      // Wall slide glow
+      if ((p.wallLeft || p.wallRight) && !p.onGround) {
+        ctx.save(); ctx.globalAlpha = 0.32;
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath(); ctx.arc(cx, top + PH/2, PW, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Head
+      ctx.beginPath(); ctx.arc(cx, headCY, 9, 0, Math.PI*2);
+      ctx.fillStyle = skinColor; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#333';
+      ctx.beginPath(); ctx.arc(cx + p.facing*3.5, headCY, 1.8, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + p.facing, headCY+3, 4, 0.1, Math.PI-0.1); ctx.stroke();
+
+      // Backwards baseball cap
+      const brimDir = -p.facing, capR = 11;
+      ctx.fillStyle = '#e53935';
+      ctx.beginPath(); ctx.arc(cx, headCY - 2, capR, Math.PI, 0); ctx.closePath();
+      ctx.fill(); ctx.strokeStyle = '#222'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#c62828';
+      ctx.beginPath();
+      ctx.moveTo(cx + brimDir*(capR-2), headCY-4);
+      ctx.lineTo(cx + brimDir*(capR+9), headCY-2);
+      ctx.lineTo(cx + brimDir*(capR+9), headCY+2);
+      ctx.lineTo(cx + brimDir*(capR-2), headCY+1);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(cx, headCY-capR-1, 2, 0, Math.PI*2); ctx.fill();
+
+      // Body + limbs
+      ctx.lineWidth = 3; ctx.strokeStyle = '#222';
+      ctx.beginPath(); ctx.moveTo(cx, neckY); ctx.lineTo(cx, waistY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, waistY); ctx.lineTo(cx - Math.sin(legSwing)*15, feetY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, waistY); ctx.lineTo(cx + Math.sin(legSwing)*15, feetY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, shoulderY); ctx.lineTo(cx - Math.cos(armSwing)*13, shoulderY + Math.sin(armSwing+0.3)*10+8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, shoulderY); ctx.lineTo(cx + Math.cos(armSwing)*13, shoulderY - Math.sin(armSwing-0.3)*10+8); ctx.stroke();
+    }
+
+    function drawHUD() {
+      const t = Date.now() / 1000;
+      const inTower = player.x > 870;
+      const metric  = inTower
+        ? `Height: ${Math.max(0, Math.floor((450 - player.y - PH) / 10))}m`
+        : `Distance: ${Math.max(0, Math.floor((player.x - 80) / 10))}m`;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(10, 10, 185, 36);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial';
+      ctx.fillText(metric, 20, 33);
+
+      // Loop badge
+      if (loopCount > 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(10, 52, 120, 30);
+        ctx.fillStyle = '#fdd835'; ctx.font = 'bold 14px Arial';
+        ctx.fillText(`Loop ${loopCount}  🔁`, 18, 72);
+      }
+
+      // Checkpoint dots (top right)
+      for (let i = 0; i < checkpoints.length; i++) {
+        const cp = checkpoints[i];
+        const dx = W - 30 - (checkpoints.length - 1 - i) * 28;
+        ctx.beginPath(); ctx.arc(dx, 24, 10, 0, Math.PI*2);
+        ctx.fillStyle = cp.activated ? '#ffd700' : '#555'; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = cp.activated ? '#333' : '#aaa';
+        ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(cp.label, dx, 28); ctx.textAlign = 'left';
+      }
+
+      // "Checkpoint saved!" flash
+      if (cpFlash > 0) {
+        ctx.save(); ctx.globalAlpha = Math.min(1, cpFlash / 30);
+        ctx.fillStyle = '#ffd700'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(`★ Checkpoint ${cpFlashLabel} Saved! ★`, W/2, H/2 - 30);
+        ctx.textAlign = 'left'; ctx.restore();
+      }
+
+      // "Loop N!" flash after completing a loop
+      if (loopFlash > 0) {
+        const alpha = Math.min(1, loopFlash / 40);
+        ctx.save(); ctx.globalAlpha = alpha;
+        // Dim overlay for first 60 frames
+        if (loopFlash > 140) {
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(0, 0, W, H);
+        }
+        ctx.fillStyle = '#fdd835'; ctx.font = 'bold 38px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(`🎉 LOOP ${loopCount}! 🎉`, W/2, H/2 - 20);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Arial';
+        const obstacleAdded = loopCount <= allObstacles.length;
+        ctx.fillText(
+          obstacleAdded ? `New obstacle added! (${loopCount} total)` : 'You\'re a parkour master!',
+          W/2, H/2 + 18
+        );
+        ctx.textAlign = 'left'; ctx.restore();
+      }
+
+      // Wall jump hint
+      if ((player.wallLeft || player.wallRight) && !player.onGround) {
+        ctx.fillStyle = 'rgba(0,229,255,0.95)';
+        ctx.font = 'bold 17px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('Press ↑ to WALL JUMP!', W/2, 42);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    // ─── Main draw ─────────────────────────────────────────────
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      drawBackground();
+
+      ctx.save();
+      ctx.translate(-camX * 0.3, -camY * 0.15);
+      for (const c of clouds) drawCloud(c.x, c.y, c.s);
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(-camX, -camY);
+      for (const p of platforms) drawPlatform(p);
+      drawCheckpoints();
+      drawFinishFlag();
+      const t = Date.now() / 1000;
+      drawObstacles(t);
+      // Double-jump burst ring
+      if (doubleJumpEffect) {
+        const e = doubleJumpEffect;
+        e.age++;
+        const r = e.age * 3.5;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - e.age / 18);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        if (e.age > 18) doubleJumpEffect = null;
+      }
+      drawStick();
+      ctx.restore();
+
+      drawHUD();
+    }
+
+    // ─── Game loop ─────────────────────────────────────────────
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+    loop();
+  </script>
+</body>
+</html>
