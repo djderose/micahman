@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Stick Parkour - Micahman</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -15,8 +16,47 @@
       font-family: Arial, sans-serif;
     }
     h1 { color: #fff; margin-bottom: 10px; font-size: 1.8em; letter-spacing: 2px; }
-    canvas { border: 3px solid #fff; border-radius: 10px; display: block; }
+    canvas { border: 3px solid #fff; border-radius: 10px; display: block; max-width: 100%; height: auto; }
     .controls { color: #aaa; margin-top: 10px; font-size: 0.85em; text-align: center; }
+
+    /* Touch controls — only visible on touch/small screens */
+    .touch-controls {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 0; right: 0;
+      padding: 0 24px;
+      pointer-events: none;
+      align-items: flex-end;
+      justify-content: space-between;
+      z-index: 10;
+    }
+    @media (pointer: coarse), (max-width: 700px) {
+      .touch-controls { display: flex; }
+      .controls { display: none; }
+    }
+    .touch-group { display: flex; gap: 14px; pointer-events: all; }
+    .ctrl-btn {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      border: 3px solid rgba(255,255,255,0.45);
+      color: #fff;
+      font-size: 1.9em;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      user-select: none; -webkit-user-select: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+    .ctrl-btn:active { background: rgba(255,255,255,0.38); }
+    .btn-jump {
+      width: 88px; height: 88px;
+      background: rgba(100,220,100,0.25);
+      border-color: rgba(100,255,100,0.55);
+    }
+    .btn-jump:active { background: rgba(100,255,100,0.45); }
   </style>
 </head>
 <body>
@@ -28,6 +68,17 @@
     Press ↑ again in the air to <strong style="color:#fff">DOUBLE JUMP!</strong> &nbsp;|&nbsp;
     Sprint + jump for extra height!
   </p>
+
+  <!-- Touch controls -->
+  <div class="touch-controls">
+    <div class="touch-group">
+      <button class="ctrl-btn" id="btn-left">◀</button>
+      <button class="ctrl-btn" id="btn-right">▶</button>
+    </div>
+    <div class="touch-group">
+      <button class="ctrl-btn btn-jump" id="btn-jump">▲</button>
+    </div>
+  </div>
 
   <script>
     const canvas = document.getElementById('game');
@@ -140,6 +191,19 @@
         e.preventDefault();
     });
     document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    // Touch buttons — set the same keys the keyboard uses
+    function bindTouchBtn(id, code) {
+      const el = document.getElementById(id);
+      el.addEventListener('touchstart', e => { e.preventDefault(); keys[code] = true;  }, { passive: false });
+      el.addEventListener('touchend',   e => { e.preventDefault(); keys[code] = false; }, { passive: false });
+      el.addEventListener('touchcancel',  () => { keys[code] = false; });
+    }
+    bindTouchBtn('btn-left',  'ArrowLeft');
+    bindTouchBtn('btn-right', 'ArrowRight');
+    bindTouchBtn('btn-jump',  'ArrowUp');
+    // Prevent scroll/pinch-zoom while playing
+    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
     // ─── Camera ────────────────────────────────────────────────
     let camX = 0, camY = 0;
