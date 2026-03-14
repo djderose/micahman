@@ -93,8 +93,8 @@
     const JUMP_VY       = -13;
     const RUNJUMP_VY    = -15.5;  // extra height when sprinting at full speed
     const DOUBLEJUMP_VY = -11;    // second jump in the air (a bit weaker)
-    const WALLJUMP_VY   = -12;
-    const WALLJUMP_VX   = 7;
+    const WALLJUMP_VY   = -11;    // slightly less vertical than before
+    const WALLJUMP_VX   = 9;      // strong horizontal kick (was 7)
     const SPEED         = 5;
     const FRICTION      = 0.78;
     const PW = 20, PH = 55;
@@ -110,6 +110,7 @@
       walkCycle: 0,
       jumpConsumed: false,
       jumpsLeft: 2,         // 2 = can still double-jump
+      wallJumpLock: 0,      // frames to ignore horizontal input after wall jump
     };
 
     // ─── Spawn + loop state ────────────────────────────────────
@@ -118,6 +119,19 @@
     let loopFlash        = 0;   // frames remaining for "Loop N!" banner
     let hitFlash         = 0;   // frames remaining for obstacle-hit flash
     let doubleJumpEffect = null; // { x, y, age } — ring burst on double jump
+
+    // ─── Loop variant ──────────────────────────────────────────
+    // Cycles: 0=normal, 1=windy, 2=low-gravity, 3=turbo obstacles
+    let loopVariant = 0;
+    let loopWind    = 0;   // horizontal force per frame (+ = right, - = left)
+    let gravityMult = 1;   // multiplier on GRAVITY each frame
+
+    const VARIANT_LABELS = [
+      '',
+      '💨 Windy!',
+      '🌙 Low Gravity!',
+      '⚡ Turbo Obstacles!',
+    ];
 
     // ─── Checkpoints ───────────────────────────────────────────
     const CHECKPOINT_DEFS = [
@@ -162,6 +176,20 @@
 
       // Finish platform (top) — starts at x=990 leaving ~88px gap on left for entry
       { x: 990, y: -1134, w: 182, h: 22, color: '#fdd835', isFinish: true },
+    ];
+
+    // ─── Moving platforms (revealed from loop 2+) ──────────────
+    // Each oscillates sinusoidally along one axis.
+    const movingPlatforms = [
+      // Intro section — horizontal slider between the 2nd and 3rd hops
+      { baseX: 455, baseY: 340, w: 85, h: 18, color: '#7b1fa2',
+        axis: 'x', range: 115, speed: 1.1, phase: 0.0, x: 455, y: 340 },
+      // Tower lower-mid — vertical slider between F3 and F4
+      { baseX: 965, baseY: -165, w: 68, h: 18, color: '#00838f',
+        axis: 'y', range: 74, speed: 1.6, phase: 1.3, x: 965, y: -165 },
+      // Tower upper — horizontal slider between F7 and F8 area
+      { baseX: 968, baseY: -560, w: 62, h: 18, color: '#c62828',
+        axis: 'x', range: 46, speed: 2.0, phase: 2.5, x: 968, y: -560 },
     ];
 
     // ─── Obstacles (one revealed per loop completion) ──────────
@@ -210,6 +238,11 @@
     // ─── Camera ────────────────────────────────────────────────
     let camX = 0, camY = 0;
 
+    // ─── Active platform list (includes moving ones when unlocked) ─
+    function levelPlatforms() {
+      return loopCount >= 2 ? platforms.concat(movingPlatforms) : platforms;
+    }
+
     // ─── Collision helpers ─────────────────────────────────────
     function overlap(a, b) {
       return a.x < b.x + b.w && a.x + PW > b.x &&
@@ -218,7 +251,7 @@
 
     function resolveX() {
       player.wallLeft = player.wallRight = false;
-      for (const p of platforms) {
+      for (const p of levelPlatforms()) {
         if (!overlap(player, p)) continue;
         if (player.y + PH < p.y + 6) continue;
         if (player.vx > 0) { player.x = p.x - PW;   player.wallRight = true; }
@@ -229,7 +262,7 @@
 
     function resolveY() {
       player.onGround = false;
-      for (const p of platforms) {
+      for (const p of levelPlatforms()) {
         if (!overlap(player, p)) continue;
         if (player.vy > 0) {
           player.y = p.y - PH; player.vy = 0; player.onGround = true;
@@ -245,6 +278,30 @@
     function triggerLoop() {
       loopCount++;
       loopFlash = 200;
+
+      // Pick this loop's variant (cycles 0→1→2→3→0→…)
+      loopVariant = (loopCount - 1) % 4;
+      switch (loopVariant) {
+        case 1:
+          // Windy — alternates direction each time
+          loopWind    = (loopCount % 2 === 0) ? 0.20 : -0.20;
+          gravityMult = 1;
+          break;
+        case 2:
+          // Low gravity — floaty jumps
+          loopWind    = 0;
+          gravityMult = 0.60;
+          break;
+        case 3:
+          // Turbo — obstacles spin faster (handled in getObstacleTip)
+          loopWind    = 0;
+          gravityMult = 1;
+          break;
+        default:
+          loopWind    = 0;
+          gravityMult = 1;
+      }
+
       checkpoints = CHECKPOINT_DEFS.map(c => ({ ...c, activated: false }));
       spawnX = 80; spawnY = 380;
       player.x = spawnX; player.y = spawnY;
@@ -275,7 +332,9 @@
 
     // ─── Obstacle logic ────────────────────────────────────────
     function getObstacleTip(obs, t) {
-      const angle = obs.maxAngle * Math.sin(t * obs.freq + obs.phase);
+      // Turbo variant: obstacles swing 2× faster
+      const freqMult = loopVariant === 3 ? 2.0 : 1.0;
+      const angle = obs.maxAngle * Math.sin(t * obs.freq * freqMult + obs.phase);
       return {
         angle,
         tipX: obs.pivotX + Math.sin(angle) * obs.len,
@@ -301,15 +360,32 @@
       }
     }
 
+    // ─── Moving platform update ────────────────────────────────
+    function updateMovingPlatforms(t) {
+      for (const mp of movingPlatforms) {
+        if (mp.axis === 'x') mp.x = mp.baseX + Math.sin(t * mp.speed + mp.phase) * mp.range;
+        else                  mp.y = mp.baseY + Math.sin(t * mp.speed + mp.phase) * mp.range;
+      }
+    }
+
     // ─── Update ────────────────────────────────────────────────
     function update() {
       const left  = keys['ArrowLeft']  || keys['KeyA'];
       const right = keys['ArrowRight'] || keys['KeyD'];
       const jump  = keys['ArrowUp']    || keys['KeyW'] || keys['Space'];
 
-      if (left)       { player.vx = -SPEED; player.facing = -1; }
-      else if (right) { player.vx =  SPEED; player.facing =  1; }
-      else            { player.vx *= FRICTION; if (Math.abs(player.vx) < 0.1) player.vx = 0; }
+      // Tick wall-jump lock (blocks directional input briefly after a wall jump
+      // so the horizontal kick has time to carry the player away from the wall)
+      if (player.wallJumpLock > 0) player.wallJumpLock--;
+
+      if (!player.wallJumpLock) {
+        if (left)       { player.vx = -SPEED; player.facing = -1; }
+        else if (right) { player.vx =  SPEED; player.facing =  1; }
+        else            { player.vx *= FRICTION; if (Math.abs(player.vx) < 0.1) player.vx = 0; }
+      }
+
+      // Apply wind force
+      if (loopWind !== 0) player.vx += loopWind;
 
       if (jump && !player.jumpConsumed) {
         const sprinting = Math.abs(player.vx) >= SPEED * 0.9;
@@ -319,10 +395,16 @@
           player.jumpsLeft = 1;
           player.jumpConsumed = true;
         } else if (player.wallLeft) {
-          player.vy = WALLJUMP_VY; player.vx =  WALLJUMP_VX;
+          // Jump away from the left wall — kick right
+          player.vy = WALLJUMP_VY;
+          player.vx = WALLJUMP_VX;
+          player.wallJumpLock = 20;
           player.facing = 1; player.jumpsLeft = 1; player.jumpConsumed = true;
         } else if (player.wallRight) {
-          player.vy = WALLJUMP_VY; player.vx = -WALLJUMP_VX;
+          // Jump away from the right wall — kick left
+          player.vy = WALLJUMP_VY;
+          player.vx = -WALLJUMP_VX;
+          player.wallJumpLock = 20;
           player.facing = -1; player.jumpsLeft = 1; player.jumpConsumed = true;
         } else if (player.jumpsLeft > 0) {
           // Double jump — slight horizontal boost in whichever way you're moving
@@ -336,7 +418,7 @@
       if (!jump) player.jumpConsumed = false;
 
       const wallSliding = ((player.wallLeft && left) || (player.wallRight && right)) && !player.onGround;
-      player.vy += wallSliding ? GRAVITY * 0.25 : GRAVITY;
+      player.vy += wallSliding ? GRAVITY * 0.25 * gravityMult : GRAVITY * gravityMult;
       if (player.vy > MAX_FALL) player.vy = MAX_FALL;
 
       player.x += player.vx;
@@ -350,6 +432,7 @@
 
       const t = Date.now() / 1000;
       checkObstacles(t);
+      if (loopCount >= 2) updateMovingPlatforms(t);
 
       // Camera
       camX += (player.x - W * 0.38 - camX) * 0.10;
@@ -373,6 +456,22 @@
       sky.addColorStop(1, `rgb(${r+28},${g+18},${b})`);
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, H);
+
+      // Wind indicator — arrows drifting across screen
+      if (loopWind !== 0) {
+        const t = Date.now() / 1000;
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = '#fff';
+        ctx.font = '22px Arial';
+        const symbol = loopWind > 0 ? '→' : '←';
+        for (let i = 0; i < 5; i++) {
+          const wx = ((t * 80 * Math.sign(loopWind) + i * 160) % (W + 60)) - 30;
+          const wy = 80 + i * 90;
+          ctx.fillText(symbol, wx, wy);
+        }
+        ctx.restore();
+      }
     }
 
     function drawCloud(cx, cy, s) {
@@ -391,6 +490,26 @@
       ctx.fillRect(p.x, p.y, p.w, Math.min(5, p.h));
       ctx.fillStyle = 'rgba(0,0,0,0.18)';
       ctx.fillRect(p.x, p.y + p.h - Math.min(4,p.h), p.w, Math.min(4,p.h));
+    }
+
+    function drawMovingPlatform(p) {
+      // Draw with a subtle glow to signal it's special
+      ctx.save();
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8;
+      drawPlatform(p);
+      ctx.restore();
+      // Arrow showing direction of movement
+      const t = Date.now() / 1000;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+      ctx.save();
+      ctx.globalAlpha = 0.55 * pulse;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      const arrow = p.axis === 'x' ? '↔' : '↕';
+      ctx.fillText(arrow, p.x + p.w / 2, p.y + p.h + 13);
+      ctx.restore();
     }
 
     function drawStar(x, y, r) {
@@ -553,6 +672,16 @@
         ctx.fillText(`Loop ${loopCount}  🔁`, 18, 72);
       }
 
+      // Active loop variant indicator (top-center)
+      if (loopCount > 0 && loopVariant !== 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(W/2 - 90, 8, 180, 28);
+        ctx.fillStyle = ['', '#80d8ff', '#b9f6ca', '#ffab40'][loopVariant] || '#fff';
+        ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(VARIANT_LABELS[loopVariant], W/2, 27);
+        ctx.textAlign = 'left';
+      }
+
       // Checkpoint dots (top right)
       for (let i = 0; i < checkpoints.length; i++) {
         const cp = checkpoints[i];
@@ -583,13 +712,17 @@
           ctx.fillRect(0, 0, W, H);
         }
         ctx.fillStyle = '#fdd835'; ctx.font = 'bold 38px Arial'; ctx.textAlign = 'center';
-        ctx.fillText(`🎉 LOOP ${loopCount}! 🎉`, W/2, H/2 - 20);
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Arial';
-        const obstacleAdded = loopCount <= allObstacles.length;
-        ctx.fillText(
-          obstacleAdded ? `New obstacle added! (${loopCount} total)` : 'You\'re a parkour master!',
-          W/2, H/2 + 18
-        );
+        ctx.fillText(`🎉 LOOP ${loopCount}! 🎉`, W/2, H/2 - 30);
+
+        // Build the "what changed" lines
+        const lines = [];
+        if (loopCount <= allObstacles.length) lines.push(`🪵 New swinging log! (${loopCount} total)`);
+        if (loopCount === 2)                   lines.push('🟣 Moving platforms unlocked!');
+        if (loopVariant !== 0)                 lines.push(VARIANT_LABELS[loopVariant]);
+        if (lines.length === 0)                lines.push('You\'re a parkour master!');
+
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Arial';
+        lines.forEach((line, i) => ctx.fillText(line, W/2, H/2 + 10 + i * 26));
         ctx.textAlign = 'left'; ctx.restore();
       }
 
@@ -615,6 +748,9 @@
       ctx.save();
       ctx.translate(-camX, -camY);
       for (const p of platforms) drawPlatform(p);
+      if (loopCount >= 2) {
+        for (const mp of movingPlatforms) drawMovingPlatform(mp);
+      }
       drawCheckpoints();
       drawFinishFlag();
       const t = Date.now() / 1000;
