@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Ball Drop - Micahman</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      user-select: none;
+    }
+    h1 { color: #fff; margin-bottom: 10px; font-size: 1.8em; letter-spacing: 2px; }
+    canvas {
+      border: 3px solid rgba(255,255,255,0.5);
+      border-radius: 14px;
+      display: block;
+      max-width: min(400px, 96vw);
+      max-height: calc(100vh - 120px);
+      width: auto; height: auto;
+    }
+    .back { margin-top: 10px; color: #88a0cc; font-size: 0.9em; text-decoration: none; }
+    .back:hover { color: #fff; }
+
+    /* Mobile arrow controls */
+    .touch-controls {
+      display: flex;
+      position: fixed;
+      bottom: 20px;
+      left: 0; right: 0;
+      justify-content: center;
+      gap: 48px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    @media (pointer: fine) and (min-width: 701px) {
+      .touch-controls { display: none; }
+    }
+    .ctrl-btn {
+      width: 76px; height: 76px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      border: 3px solid rgba(255,255,255,0.4);
+      color: #fff;
+      font-size: 2em;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: all;
+      cursor: pointer;
+      user-select: none; -webkit-user-select: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+    .ctrl-btn:active { background: rgba(255,255,255,0.35); }
+  </style>
+</head>
+<body>
+  <h1>⭐ Ball Drop</h1>
+  <canvas id="game" width="400" height="640"></canvas>
+  <a href="/" class="back">← Back to games</a>
+
+  <!-- Mobile controls -->
+  <div class="touch-controls">
+    <button class="ctrl-btn" id="btn-left">◀</button>
+    <button class="ctrl-btn" id="btn-right">▶</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx    = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    // ─── Constants ─────────────────────────────────────────────
+    const BALL_R      = 18;
+    const STAR_R      = 14;
+    const GRAVITY     = 0.22;
+    const MAX_VY      = 26;
+    const MAX_VX      = 8;
+    const STAR_BOOST  = 1.6;
+    const H_ACCEL     = 0.7;   // horizontal acceleration per frame when key held
+    const H_FRICTION  = 0.82;  // horizontal friction when no key held
+    const STARS_TO_WIN = 100;
+    const TOTAL_STARS  = 1000;
+    const COLS         = 4;
+    const ROWS         = Math.ceil(TOTAL_STARS / COLS);
+    const ROW_H        = 52;
+    const CAM_BALL_Y   = Math.floor(H * 0.35);
+
+    // ─── Input ─────────────────────────────────────────────────
+    const keys = {};
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code))
+        e.preventDefault();
+    });
+    document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    function bindBtn(id, code) {
+      const el = document.getElementById(id);
+      el.addEventListener('touchstart',  e => { e.preventDefault(); keys[code] = true;  }, { passive: false });
+      el.addEventListener('touchend',    e => { e.preventDefault(); keys[code] = false; }, { passive: false });
+      el.addEventListener('touchcancel',   () => { keys[code] = false; });
+    }
+    bindBtn('btn-left',  'ArrowLeft');
+    bindBtn('btn-right', 'ArrowRight');
+    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+    // ─── State ─────────────────────────────────────────────────
+    let state, score, loopCount, celebrateTimer;
+    let ball, stars, particles, camY;
+
+    // Static background twinkle stars (screen-space)
+    const bgStars = Array.from({ length: 70 }, (_, i) => ({
+      x: (i * 139 + 31) % W,
+      y: (i * 97  + 19) % H,
+      r: i % 4 === 0 ? 1.5 : 0.8,
+    }));
+
+    // ─── Init ──────────────────────────────────────────────────
+    function initGame() {
+      state         = 'waiting';
+      score         = 0;
+      celebrateTimer = 0;
+      camY          = 0;
+      particles     = [];
+
+      ball = {
+        x: W / 2, y: BALL_R + 30,
+        vx: 0, vy: 0,
+        trail: [],
+        wobble: 0,
+      };
+
+      // Grid placement: one star per cell with random offset
+      stars = [];
+      const cellW = W / COLS;
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          if (stars.length >= TOTAL_STARS) break;
+          const cx = col * cellW + cellW / 2;
+          const cy = 100 + row * ROW_H + ROW_H / 2;
+          stars.push({
+            x:     cx + (Math.random() - 0.5) * (cellW - STAR_R * 3),
+            y:     cy + (Math.random() - 0.5) * (ROW_H  - STAR_R * 2),
+            angle: Math.random() * Math.PI * 2,
+            spin:  (Math.random() > 0.5 ? 1 : -1) * (0.02 + Math.random() * 0.02),
+            hit:   false,
+            scale: 1,
+          });
+        }
+      }
+    }
+
+    function startDrop() {
+      if (state !== 'waiting') return;
+      state   = 'dropping';
+      ball.vy = 3;
+      ball.vx = (Math.random() - 0.5) * 2;
+    }
+
+    // ─── Particles ─────────────────────────────────────────────
+    function burst(wx, wy) {
+      const hue = 40 + Math.random() * 50;
+      for (let i = 0; i < 14; i++) {
+        const a   = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
+        const spd = 2.5 + Math.random() * 3;
+        particles.push({
+          x: wx, y: wy,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          life: 1, decay: 0.038 + Math.random() * 0.02,
+          r: 2.5 + Math.random() * 3,
+          color: `hsl(${hue + i * 5},100%,65%)`,
+        });
+      }
+    }
+
+    // ─── Update ────────────────────────────────────────────────
+    function update() {
+      if (state === 'waiting') {
+        ball.wobble = (ball.wobble + 0.05) % (Math.PI * 2);
+        return;
+      }
+      if (state !== 'dropping') return;
+
+      // Celebrate freeze
+      if (celebrateTimer > 0) {
+        celebrateTimer--;
+        if (celebrateTimer === 0) initGame();
+        return;
+      }
+
+      // Horizontal control
+      const left  = keys['ArrowLeft']  || keys['KeyA'];
+      const right = keys['ArrowRight'] || keys['KeyD'];
+      if (left)       ball.vx = Math.max(ball.vx - H_ACCEL, -MAX_VX);
+      else if (right) ball.vx = Math.min(ball.vx + H_ACCEL,  MAX_VX);
+      else            ball.vx *= H_FRICTION;
+      if (Math.abs(ball.vx) < 0.05) ball.vx = 0;
+
+      // Vertical physics
+      ball.vy = Math.min(ball.vy + GRAVITY, MAX_VY);
+
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // Wall bounce
+      if (ball.x - BALL_R < 0)  { ball.x = BALL_R;     ball.vx =  Math.abs(ball.vx) * 0.6; }
+      if (ball.x + BALL_R > W)  { ball.x = W - BALL_R; ball.vx = -Math.abs(ball.vx) * 0.6; }
+
+      // Camera
+      camY = ball.y - CAM_BALL_Y;
+
+      // Trail
+      ball.trail.push({ x: ball.x, y: ball.y });
+      if (ball.trail.length > 22) ball.trail.shift();
+
+      // Star collisions — check current position AND midpoint so fast balls don't tunnel
+      const hitR2 = (BALL_R + STAR_R) ** 2;
+      const midX  = ball.x - ball.vx * 0.5;
+      const midY  = ball.y - ball.vy * 0.5;
+      for (const s of stars) {
+        if (s.hit) continue;
+        if (s.y < camY - STAR_R || s.y > camY + H + STAR_R) continue;
+        const dx = ball.x - s.x, dy = ball.y - s.y;
+        const mdx = midX - s.x,  mdy = midY - s.y;
+        if (dx*dx + dy*dy < hitR2 || mdx*mdx + mdy*mdy < hitR2) {
+          s.hit = true;
+          score++;
+          ball.vy = Math.min(ball.vy + STAR_BOOST, MAX_VY);
+          burst(s.x, s.y);
+          // Trigger loop at 100 stars
+          if (score >= STARS_TO_WIN) {
+            loopCount++;
+            celebrateTimer = 150; // ~2.5 seconds
+          }
+        }
+      }
+
+      // Animate collected stars (shrink out)
+      for (const s of stars) {
+        if (s.hit && s.scale > 0) s.scale = Math.max(0, s.scale - 0.09);
+      }
+
+      // Particles
+      for (const p of particles) {
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= p.decay;
+      }
+      for (let i = particles.length - 1; i >= 0; i--) {
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    // ─── Draw ──────────────────────────────────────────────────
+    function drawBg() {
+      ctx.fillStyle = '#0a0a1e';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      for (const s of bgStars) {
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+      }
+    }
+
+    function worldToScreen(wy) { return wy - camY; }
+
+    function drawTrail() {
+      const n = ball.trail.length;
+      for (let i = 0; i < n; i++) {
+        const t  = i / n;
+        const pt = ball.trail[i];
+        ctx.beginPath();
+        ctx.arc(pt.x, worldToScreen(pt.y), BALL_R * t * 0.62, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(80,160,255,${t * 0.28})`;
+        ctx.fill();
+      }
+    }
+
+    function drawBall() {
+      const bob = state === 'waiting' ? Math.sin(ball.wobble) * 5 : 0;
+      const x = ball.x, y = worldToScreen(ball.y) + bob;
+
+      const glow = ctx.createRadialGradient(x, y, BALL_R*0.5, x, y, BALL_R*2.2);
+      glow.addColorStop(0, 'rgba(100,180,255,0.35)');
+      glow.addColorStop(1, 'rgba(100,180,255,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(x, y, BALL_R*2.2, 0, Math.PI*2); ctx.fill();
+
+      const body = ctx.createRadialGradient(x - BALL_R*0.3, y - BALL_R*0.3, BALL_R*0.1, x, y, BALL_R);
+      body.addColorStop(0,   '#b8dfff');
+      body.addColorStop(0.5, '#3a9fff');
+      body.addColorStop(1,   '#0055cc');
+      ctx.beginPath(); ctx.arc(x, y, BALL_R, 0, Math.PI*2);
+      ctx.fillStyle = body; ctx.fill();
+      ctx.strokeStyle = '#88ccff'; ctx.lineWidth = 2; ctx.stroke();
+
+      ctx.beginPath(); ctx.arc(x - BALL_R*0.32, y - BALL_R*0.32, BALL_R*0.28, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fill();
+    }
+
+    function starPath(x, y, r, angle) {
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = angle + i * Math.PI / 5 - Math.PI / 2;
+        const d = i % 2 === 0 ? r : r * 0.42;
+        i === 0 ? ctx.moveTo(x + Math.cos(a)*d, y + Math.sin(a)*d)
+                : ctx.lineTo(x + Math.cos(a)*d, y + Math.sin(a)*d);
+      }
+      ctx.closePath();
+    }
+
+    function drawStars() {
+      const top    = camY - STAR_R * 2;
+      const bottom = camY + H + STAR_R * 2;
+      for (const s of stars) {
+        if (s.y < top || s.y > bottom) continue;
+        const sx = s.x, sy = worldToScreen(s.y);
+        if (s.hit) {
+          if (s.scale <= 0) continue;
+          s.angle += s.spin;
+          ctx.save();
+          ctx.globalAlpha = s.scale;
+          ctx.shadowColor = '#ffee00'; ctx.shadowBlur = 10;
+          ctx.fillStyle = '#ffd700';
+          starPath(sx, sy, STAR_R * s.scale, s.angle);
+          ctx.fill();
+          ctx.restore();
+          continue;
+        }
+        s.angle += s.spin;
+        ctx.save();
+        ctx.shadowColor = '#ffee00'; ctx.shadowBlur = 13;
+        ctx.fillStyle = '#ffd700';
+        starPath(sx, sy, STAR_R, s.angle);
+        ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,200,0.65)'; ctx.lineWidth = 1.5;
+        starPath(sx, sy, STAR_R, s.angle);
+        ctx.stroke();
+      }
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        const psy = worldToScreen(p.y);
+        if (psy < -20 || psy > H + 20) continue;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, psy, p.r, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawHUD() {
+      // Score
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath(); ctx.roundRect(10, 10, 130, 38, 8); ctx.fill();
+      ctx.fillStyle = '#ffd700'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'left';
+      ctx.fillText(`⭐ ${score} / ${STARS_TO_WIN}`, 18, 36);
+
+      // Loop badge
+      if (loopCount > 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath(); ctx.roundRect(10, 54, 115, 30, 8); ctx.fill();
+        ctx.fillStyle = '#c084fc'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
+        ctx.fillText(`🔁 Loop ${loopCount}`, 18, 74);
+      }
+
+      // Progress bar (top, full width)
+      const pct = score / STARS_TO_WIN;
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(0, 0, W, 5);
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(0, 0, W * pct, 5);
+    }
+
+    function drawWaitingPrompt() {
+      const bob   = Math.sin(ball.wobble) * 5;
+      const t     = Date.now() / 1000;
+      const alpha = 0.75 + 0.25 * Math.sin(t * 2.5);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+      ctx.fillText('▼', W / 2, worldToScreen(ball.y) + bob + BALL_R + 22);
+      ctx.fillStyle = '#a8d8ff'; ctx.font = 'bold 16px Arial';
+      ctx.fillText('Tap to drop!', W / 2, worldToScreen(ball.y) + bob + BALL_R + 46);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '13px Arial'; ctx.textAlign = 'center';
+      ctx.fillText(`Collect ${STARS_TO_WIN} stars to loop!`, W / 2, H - 20);
+    }
+
+    function drawCelebration() {
+      if (celebrateTimer <= 0) return;
+      const alpha = Math.min(1, celebrateTimer / 30);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.55;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ffd700'; ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center';
+      ctx.fillText('🎉 100 Stars! 🎉', W/2, H/2 - 20);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial';
+      ctx.fillText(`Loop ${loopCount}!`, W/2, H/2 + 22);
+      ctx.restore();
+    }
+
+    // ─── Input ─────────────────────────────────────────────────
+    function handleTap() {
+      if (state === 'waiting') startDrop();
+    }
+
+    function canvasCoords(e) {
+      const r   = canvas.getBoundingClientRect();
+      const sx  = W / r.width, sy = H / r.height;
+      const src = e.touches ? e.touches[0] : e;
+      return [(src.clientX - r.left) * sx, (src.clientY - r.top) * sy];
+    }
+
+    canvas.addEventListener('click',      () => handleTap());
+    canvas.addEventListener('touchstart', e  => { e.preventDefault(); handleTap(); }, { passive: false });
+
+    // ─── Main loop ─────────────────────────────────────────────
+    function loop() {
+      update();
+      drawBg();
+      drawStars();
+      drawParticles();
+      if (state === 'dropping') drawTrail();
+      drawBall();
+      drawHUD();
+      if (state === 'waiting')   drawWaitingPrompt();
+      if (celebrateTimer > 0)   drawCelebration();
+      requestAnimationFrame(loop);
+    }
+
+    loopCount = 0;
+    initGame();
+    loop();
+  </script>
+</body>
+</html>
